@@ -115,23 +115,14 @@ func gameClockAtMinute(minute int) time.Time {
 }
 
 func TestDiscontinuedShopOpenWindowsUseGameTime(t *testing.T) {
-	tests := []struct {
-		minute int
-		open   bool
-	}{
-		{8*60 + 59, false},
-		{9 * 60, true},
-		{11*60 + 59, true},
-		{12 * 60, false},
-		{19*60 + 59, false},
-		{20 * 60, true},
-		{21*60 + 59, true},
-		{22 * 60, false},
-	}
-	for _, tt := range tests {
-		if got := discontinuedShopOpenAt(gameClockAtMinute(tt.minute)); got != tt.open {
-			t.Fatalf("游戏时间 %02d:%02d open=%v want=%v", tt.minute/60, tt.minute%60, got, tt.open)
+	// 本地部署：停产商品全天 24 小时开放，任意游戏时刻都应可购买。
+	for _, minute := range []int{0, 8*60 + 59, 12 * 60, 19*60 + 59, 22 * 60, 23*60 + 59} {
+		if got := discontinuedShopOpenAt(gameClockAtMinute(minute)); !got {
+			t.Fatalf("游戏时间 %02d:%02d open=false want=true（全天开放）", minute/60, minute%60)
 		}
+	}
+	if discontinuedShopChangedSince(time.Time{}, time.Now()) {
+		t.Fatal("全天开放模式下不应存在时段边界")
 	}
 }
 
@@ -189,7 +180,8 @@ func TestDiscontinuedShopWithReadOnlyStaticDatabase(t *testing.T) {
 		t.Fatal(err)
 	}
 	srv.SetDB(db)
-	for _, minute := range []int{20*60 + 47, 22 * 60} {
+	// 全天开放：任何时刻（含原关闭时段）停产商品都应在货架且价格有效。
+	for _, minute := range []int{20*60 + 47, 22 * 60, 12 * 60, 8 * 60} {
 		rows, err := srv.shopItemsAt(context.Background(), "fishingstore_volhov", gameClockAtMinute(minute))
 		if err != nil {
 			t.Fatal(err)
@@ -201,7 +193,7 @@ func TestDiscontinuedShopWithReadOnlyStaticDatabase(t *testing.T) {
 					found = p.Silver > 0 && p.Stock > 0
 				}
 			}
-			if found != (minute < 22*60) {
+			if !found {
 				t.Fatalf("read-only static shelf %s at %d: %v", id, minute, found)
 			}
 		}
@@ -229,19 +221,15 @@ func TestReportedDiscontinuedRodsShelfAndPurchasePrice(t *testing.T) {
 		for _, p := range rows {
 			shelf[p.ItemID] = p
 		}
-		open := minute < 12*60 || minute >= 20*60 && minute < 22*60
+		// 全天开放：所有时刻都应按「开放」处理，不再有关闭时段分支。
 		for _, id := range ids {
 			p := shelf[id]
 			price, err := srv.storePriceAt(ctx, "fishingstore_volhov", id, 1, false, now)
-			if open {
-				if p == nil || p.Silver <= 0 || p.Stock <= 0 || err != nil || price != uint64(p.Silver) {
-					t.Fatalf("%d %s shelf=%+v price=%d err=%v", minute, id, p, price, err)
-				}
-				if _, err := srv.storePriceAt(ctx, "fishingstore_volhov", id, 1, true, now); err == nil {
-					t.Fatal("invented a gold price")
-				}
-			} else if p != nil || err == nil {
-				t.Fatalf("closed shelf or price accepted %s at %d", id, minute)
+			if p == nil || p.Silver <= 0 || p.Stock <= 0 || err != nil || price != uint64(p.Silver) {
+				t.Fatalf("%d %s shelf=%+v price=%d err=%v", minute, id, p, price, err)
+			}
+			if _, err := srv.storePriceAt(ctx, "fishingstore_volhov", id, 1, true, now); err == nil {
+				t.Fatal("invented a gold price")
 			}
 		}
 		const normal = "bolo_10043n_SB13"
