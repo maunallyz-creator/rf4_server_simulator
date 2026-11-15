@@ -19,6 +19,18 @@ var partCategories = map[int64]bool{
 	34: true, 36: true, 52: true, 63: true, 81: true,
 }
 
+// shopGearCategories 是“品牌店也不按品牌过滤”的核心渔具品类：鱼竿 3、
+// 卷线器 6、拟饵 17。客户端把 22/1 响应里缺失的商品统一标成
+// kDlg_Shop_Obsolete（停产），品牌店实录货架本身跨十几个品牌，若继续按
+// def.Brands 过滤，剩下约 356 根竿 / 415 个轮 / 912 个饵会被整片判成停产。
+var shopGearCategories = map[int64]bool{
+	3: true, 6: true, 17: true,
+}
+
+// shopKindTackle 是 shop_kind_defs.json 里 “钓具店” 的 kind 值；只有这类店
+// 才放开 shopGearCategories 的品牌过滤，咖啡馆/杂货铺保持原有品牌限制。
+const shopKindTackle = 0
+
 // 管理机构的书籍货架：shop_kind_defs.json 按地区登记具体书目，
 // 技能书品类为 80，与店内地图（40）不同类，且静态 item_def 中品牌为空，
 // 通用补齐规则（同品类 + 同品牌）永远补不到它们，必须按白名单显式上架。
@@ -253,6 +265,14 @@ func (d *DB) augmentShopShelf(ctx context.Context, def shopStoreDefinition, shel
 	if len(bookIDs) > 0 {
 		cats[shopBookCategory] = true
 	}
+	if def.Kind == shopKindTackle && len(def.Brands) > 0 {
+		// 钓具店的“停产”来源不只是品牌过滤：只要该店 22/1 里没有某个渔具品类，
+		// 客户端对应的整个分类页都会被灰显成停产（例如 vakula_013 只进竿、不进轮，
+		// 纺车式页 720 个轮全部显示停产）。因此钓具店一律把竿/轮/饵三类纳入补齐。
+		for c := range shopGearCategories {
+			cats[c] = true
+		}
+	}
 	if len(cats) == 0 {
 		return shelf, 0, nil
 	}
@@ -267,7 +287,14 @@ func (d *DB) augmentShopShelf(ctx context.Context, def shopStoreDefinition, shel
 			if !bookIDs[id] {
 				continue
 			}
-		} else if len(def.Brands) > 0 && !brandMatches(m.Brand, def.Brands) {
+		} else if len(def.Brands) > 0 && !brandMatches(m.Brand, def.Brands) && !(def.Kind == shopKindTackle && shopGearCategories[m.Category]) {
+			// 品牌店（beluga/zeiman/ny_bazaar/vakula…）的非渔具货架仍按品牌过滤。
+			// 但渔具店（kind 0）的竿 3 / 轮 6 / 饵 17 不能过滤：客户端拿到 22/1 后，
+			// 凡店内货架没有的商品一律灰显并打 kDlg_Shop_Obsolete「停产」标签，而
+			// 品牌店的实录基础货架本身就跨十几个品牌（见 vakula_013 / ny_bazaar），
+			// 硬按品牌过滤会把剩下 356 竿 / 415 轮 / 912 饵全判成停产。
+			// 只放开 kind 0：咖啡馆(1)、农场杂货(7) 等虽然也有带品牌的零散渔具，
+			// 但它们是按品牌进的自家货，不该把全服渔具都摆上柜台。
 			continue
 		}
 		if p, ok := d.shopSupplement.prices[id]; ok && (p.Silver > 0 || p.Gold > 0) {
