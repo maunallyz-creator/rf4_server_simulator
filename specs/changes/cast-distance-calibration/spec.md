@@ -67,13 +67,16 @@ Status: done
   - 锚点复现：实抓 21:28 同参数（UL 配置 + mastery 95 + castPct 60）→
     期望 ~24.96m，断言带 [24.5, 25.4]；
   - 标称分族：castNominalDistanceM(5)=27.5、(52)=45、(1)/(12)=60；
-  - TestCastCalibrationBands 区间整体 ×0.611（27.5/45）收紧；
-  - 高阶装备上限测试改名重定标（45m 精准抛区间不再可达，新上限 ~29.7m）。
+  - TestCastCalibrationBands 区间整体 ×0.611（27.5/45）收紧
+    *（2026-11-17 本地分档后改为 6000 杯 31.8~33.0、2000 杯 32.8~34.2，见文末）*；
+  - 高阶装备上限测试改名重定标（45m 精准抛区间不再可达，新上限 ~29.7m）
+    *（2026-11-17 本地分档后同一配置为 ~45.9 m，见文末「本地定制」）*。
 - handler 层（hCast，复用 TestCastSnapshotsRequestedDistance 接缝）：
   - 带轮装配 requested = 1.3×上限 → CastM == actionMaxM（收口生效）；
   - 无轮手竿 requested 50 > legacy 7.5 → CastM 仍 50（直通不变）；
   - 红区抛投不得解锁超过上限的成就档：25.3m 上限 + requested 32.89m 后
-    1000-1004 仍全锁；正对照直接把 32.89m 喂给成就规则则 1000 解锁
+    *（本地分档后该装配上限 26.6 m、requested 34.6 m，收口语义不变）*，
+    1000-1004 仍全锁；正对照直接把 rigMax×1.3（34.6m）喂给成就规则则 1000 解锁
     （TestCastOverMaxRequestedDoesNotUnlockAchievements）。
 - 回滚变红：标称回滚后锚点测试回到 ~40.85 变红；收口回滚后超抛用例
   CastM=65 变红；成就口径回滚成 requestedM 后

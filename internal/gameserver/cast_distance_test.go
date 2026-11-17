@@ -485,8 +485,9 @@ func TestSpoolFillCapsAtCapacity(t *testing.T) {
 }
 
 // newOverMaxCastRig 造一根"红区可超上限"的带轮装配：返回竿 GUID、满竿上限
-// 与探针会话。选 4.5 m 鲤鱼竿 + 5000 轮，满竿上限约 25.3 m——红区 ×1.3 会越过
-// 30 m 成就阶梯，正好用来验证收口是否作用到成就口径。
+// 与探针会话。选 4.5 m 鲤鱼竿 + 5000 轮，满竿上限约 26.6 m（标称按 Test 上限
+// 分档后由 25.3 m 抬到这里）——红区 ×1.3 = 34.6 m 越过 30 m 成就阶梯，正好
+// 用来验证收口是否作用到成就口径。
 func newOverMaxCastRig(t *testing.T, srv *Server) (string, float64, *Session) {
 	t.Helper()
 	const uid = int64(1000001)
