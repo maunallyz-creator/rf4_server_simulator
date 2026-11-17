@@ -153,20 +153,20 @@ func castCalibrationDistance(payloadG float64, spoolSize int64) float64 {
 }
 
 func TestCastCalibrationBands(t *testing.T) {
-	// 标称 27.5（2026-11-13 官服手感校准，specs/changes/cast-distance-calibration）
-	// 后的区间；期望值按因子链手算：8g = 27.5×0.888×0.72 ≈ 17.57（6000 大杯）、
-	// 27.5×0.888×0.84 ≈ 20.51（2000 小杯），10g 再 ×1.0107。
+	// 本地定制（2026-11-17）：标称改为按竿 Test 上限分档后，这个 helper 的
+	// Test 上限 30g 对应标称 ≈49.85（旧口径固定 27.5）；同时线杯系数整体
+	// 抬回接近 1 的带宽，所以绝对值上移、但“小杯略远”的相对关系保留。
 	for _, payload := range []float64{8, 10} {
 		largeSpool := castCalibrationDistance(payload, 5) // 6000
 		smallSpool := castCalibrationDistance(payload, 2) // 2000
-		if largeSpool < 17.4 || largeSpool > 17.9 {
-			t.Fatalf("6000线杯 %.0fg 距离=%0.2f，期望17.4～17.9米区间", payload, largeSpool)
+		if largeSpool < 41.0 || largeSpool > 43.0 {
+			t.Fatalf("6000线杯 %.0fg 距离=%0.2f，期望41.0～43.0米区间", payload, largeSpool)
 		}
-		if smallSpool < 20.3 || smallSpool > 20.9 {
-			t.Fatalf("2000线杯 %.0fg 距离=%0.2f，期望20.3～20.9米区间", payload, smallSpool)
+		if smallSpool < 42.5 || smallSpool > 45.0 {
+			t.Fatalf("2000线杯 %.0fg 距离=%0.2f，期望42.5～45.0米区间", payload, smallSpool)
 		}
-		if smallSpool <= largeSpool+2 {
-			t.Fatalf("小线杯应比6000线杯远至少2米: 小杯=%0.2f 大杯=%0.2f", smallSpool, largeSpool)
+		if smallSpool <= largeSpool {
+			t.Fatalf("小线杯应不小于6000线杯: 小杯=%0.2f 大杯=%0.2f", smallSpool, largeSpool)
 		}
 	}
 }
@@ -189,9 +189,11 @@ func TestCastPlayerStateFactorZeroStateUsesFloor(t *testing.T) {
 	}
 }
 
-// 官服手感校准（2026-11-13）后高阶装备的顶配上限 ~29.7m，落在官方
-// 20~30m 手感带顶部；45m「精准抛投」区间不再可达（旧断言 ≥44.9）。
-func TestCastHighEndGearCeilingNearThirtyMeters(t *testing.T) {
+// 本地定制（2026-11-17）：上游把高阶装备顶配锁在 ~29.7m，来源是把 27.5
+// 的 UL 标称套到 4.2m / Test 5-30g 的配置上。用户实测该配置满力只有
+// 25～30m、与重竿远投手感相反；标称按 Test 上限分档后同一配置落在 ~59.7m。
+// 此测试改为锁定本地口径（上游 20~30m 手感带不再适用）。
+func TestCastHighEndGearCeilingAfterLocalRecalibration(t *testing.T) {
 	d, _ := calculateCastDistance(CastDistanceContext{
 		RigType: 5, CastAction: 1, CastPower: 1,
 		RodLengthM: 4.2, RodAction: 4, RodTestMinG: 5, RodTestMaxG: 30,
@@ -201,8 +203,8 @@ func TestCastHighEndGearCeilingNearThirtyMeters(t *testing.T) {
 		PlayerPrimary: defaultPlayerConditionPrimary, PlayerSecondary: defaultPlayerConditionSecondary,
 		SkillMastery: 100, SkillCastPct: 10,
 	})
-	if d < 29.4 || d > 30.0 {
-		t.Fatalf("高阶装备上限应落在 ~29.7m（20~30m 官方手感带顶部），实得%0.2f", d)
+	if d < 58.0 || d > 61.5 {
+		t.Fatalf("本地重标定后高阶装备上限应落在 ~59.7m，实得%0.2f", d)
 	}
 }
 
@@ -274,8 +276,17 @@ func TestCastNominalDistanceScalesWithRodTest(t *testing.T) {
 	if got := castNominalDistanceForRod(52, 70); got != 45.0 {
 		t.Fatalf("海钓路亚标称应保持 45（本地定制不动海钓），实得 %.2f", got)
 	}
-	if got := castNominalDistanceForRod(1, 70); got != 60.0 {
-		t.Fatalf("非路亚族标称应保持 60，实得 %.2f", got)
+	// 手竿族（博洛尼亚/远投漂）：旧表给 60m，实测 8m 博洛尼亚竿能抛 48m，
+	// 与手竿摆荡投掷的实际手感相反，改为 20m 基准 + 更平缓的指数。
+	if got := castNominalDistanceForRod(1, 8); got != 20.0 {
+		t.Fatalf("手竿超轻档标称应为 20，实得 %.2f", got)
+	}
+	hand := castNominalDistanceForRod(1, 18)
+	if hand < 23 || hand > 29 {
+		t.Fatalf("8m 博洛尼亚（Test 上限 18g）标称应落在 23～29，实得 %.2f", hand)
+	}
+	if hand >= heavy {
+		t.Fatalf("同 Test 上限下手竿标称不应超过路亚: hand=%.2f heavy=%.2f", hand, heavy)
 	}
 }
 

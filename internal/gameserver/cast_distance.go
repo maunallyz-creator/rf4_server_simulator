@@ -295,34 +295,39 @@ func castSpoolSizeFactor(size int64) float64 {
 	// 线杯规格 1～7 对应常见纺车轮 1000～7000。小杯转动惯量低，
 	// 同竿同线同饵时抛得更远；规格 5（6000）作为当前大杯基准。
 	switch size {
+	// 本地定制（2026-11-17）：旧表把常见线杯一律乘 0.65～0.90，等于先砍
+	// 三成行程再去乘标称，重竿怎么配轮都抛不远。这里保留“小杯略远”的
+	// 相对关系，但把绝对值抬回到接近 1 的基准带宽。
 	case 1:
-		return 0.90
+		return 1.00
 	case 2:
-		return 0.84
+		return 0.98
 	case 3:
-		return 0.79
+		return 0.97
 	case 4:
-		return 0.75
+		return 0.96
 	case 5:
-		return 0.72
+		return 0.95
 	case 6:
-		return 0.68
+		return 0.94
 	case 7:
-		return 0.65
+		return 0.93
 	case 8:
-		return 0.84 // 低轮廓线杯
+		// 保持 0.84：UL 浅杯锚点（1.8m/Test1-8g/0.28 线）就是用这一档
+		// 校准到官服 25m 的，抬上去会把已经对得上的超轻手感顶远。
+		return 0.84
 	case 9, 10, 11, 12, 13, 14:
-		return 0.90 - 0.020*float64(size-9)
+		return 1.00 - 0.010*float64(size-9)
 	case 15, 16, 17, 18, 19, 20:
-		return 0.72 - 0.012*float64(size-15)
+		return 0.95 - 0.008*float64(size-15)
 	case 21, 22:
-		return 0.82
+		return 0.96
 	case 23:
-		// 本地定制（2026-11-17）：23/24 是大线杯/船钓轮档，旧值 0.56/0.52
-		// 直接砍掉近一半行程，与“大杯出线更顺”的实际手感相反。
-		return 0.80
+		// 23/24 是大线杯/船钓轮档，旧值 0.56/0.52 直接砍掉近一半行程，
+		// 与“大杯出线更顺”的实际手感相反。
+		return 0.92
 	case 24:
-		return 0.82
+		return 0.94
 	default:
 		return 1
 	}
@@ -412,19 +417,32 @@ const (
 	castNominalRodAnchorG = 8.0
 	// castNominalRodExponent 控制标称随 Test 上限增长的次线性指数。
 	castNominalRodExponent = 0.45
+	// castNominalHandRodM 是手竿族（含博洛尼亚/远投漂）在 UL 锚点的标称。
+	// 手竿靠摆荡投掷、没有轮子放线，实际 25～35m 就是上限；旧表给 60m
+	// 会让 8m 博洛尼亚竿直接抛出 48m（用户实测，明显不对）。
+	castNominalHandRodM = 20.0
+	// castNominalHandRodExponent 手竿对 Test 上限的响应比路亚更平缓。
+	castNominalHandRodExponent = 0.30
 )
 
 // castNominalDistanceForRod 返回按竿 Test 上限分档后的满力标称距离。
-// 非路亚族（手竿/浮钓/底钓）与海钓路亚保持原有标称，不在本次本地定制范围。
+// 路亚族按 (testMax/8)^0.45 上浮，超轻档保持 27.5；手竿族用更低的
+// 20m 基准和更平缓的 0.30 指数；海钓路亚保持原标称不动。
 func castNominalDistanceForRod(rigType int64, rodTestMaxG float64) float64 {
-	base := castNominalDistanceM(rigType)
-	if !rigTypeLureFamily[rigType] || marineRigType(rigType) {
-		return base
+	if marineRigType(rigType) {
+		// 海钓路亚 50-54 远投场景，锚点未取到前保留旧标称。
+		return castNominalDistanceM(rigType)
 	}
 	if rodTestMaxG <= castNominalRodAnchorG {
-		return base
+		if rigTypeLureFamily[rigType] {
+			return castNominalLureM
+		}
+		return castNominalHandRodM
 	}
-	return base * math.Pow(rodTestMaxG/castNominalRodAnchorG, castNominalRodExponent)
+	if rigTypeLureFamily[rigType] {
+		return castNominalLureM * math.Pow(rodTestMaxG/castNominalRodAnchorG, castNominalRodExponent)
+	}
+	return castNominalHandRodM * math.Pow(rodTestMaxG/castNominalRodAnchorG, castNominalHandRodExponent)
 }
 
 // rodTestWeightFactor 把线组载荷换算为抛投重量系数。
@@ -520,7 +538,10 @@ func castModifiersSnapshot() []CastDistanceModifier {
 }
 
 func calculateCastDistance(c CastDistanceContext) (float64, map[string]float64) {
-	distance := castNominalDistanceM(c.RigType)
+	// 本地定制（2026-11-17）：标称按竿 Test 上限分档，超轻档仍是 27.5。
+	// 以前这里固定取分族常量，重竿换不到更高基数，导致重型路亚配重饵
+	// 满力只剩十几米。
+	distance := castNominalDistanceForRod(c.RigType, c.RodTestMaxG)
 	factors := make(map[string]float64)
 	for _, modifier := range castModifiersSnapshot() {
 		if modifier == nil {
