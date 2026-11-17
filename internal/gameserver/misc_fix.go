@@ -697,6 +697,10 @@ func hSocialCurrent(ctx *Ctx) ([]byte, bool) {
 	if users < 1 {
 		users = 1
 	}
+	// 频道人数叠加虚拟在线玩家：聊天窗口和频道列表显示"多少人在线"
+	// 只看这个数字。虚拟人数由 tunable bot_online_count 控制，
+	// 调成 0 就退回只统计真实会话的原始行为。
+	users += int64(len(srv.onlineVirtualPlayers()))
 	obj := wiregen.MustMakeObj("godhiicbgng", map[int]*proto.Value{
 		0: proto.StrVal(ch.Name),
 		1: proto.StrVal("公共频道"),

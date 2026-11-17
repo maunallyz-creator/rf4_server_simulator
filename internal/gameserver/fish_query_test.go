@@ -157,8 +157,18 @@ func TestFishQueryContactAndMailReplay(t *testing.T) {
 	first.sess.Token = "fish-query-test"
 	env := &dlineTestEnv{srv: s, db: db, sess: first.sess}
 	members := env.invoke(t, 24, 4, proto.Args524(proto.U32(0), proto.StrVal("")))
-	if members.Kind != proto.KindU32Arr || len(members.Items) != 4 || members.Items[0].Num != uint64(fishQueryContactUID) || members.Items[1].Num != uint64(gearAssistantUID) {
+	if members.Kind != proto.KindU32Arr || len(members.Items) < 4 || members.Items[0].Num != uint64(fishQueryContactUID) || members.Items[1].Num != uint64(gearAssistantUID) {
 		t.Fatalf("contact missing from members: %+v", members)
+	}
+	// 本地 bot 名册会追加到尾部（UID 900000000+）；两个真实玩家仍须在列表里。
+	realSeen := 0
+	for _, it := range members.Items {
+		if n := it.Num; n == uint64(uid) || n == uint64(uid+1) {
+			realSeen++
+		}
+	}
+	if realSeen != 2 {
+		t.Fatalf("真实玩家未出现在成员列表: %+v", members)
 	}
 	card := decodeWrappedBytes(t, env.invoke(t, 24, 19, proto.Args524(proto.U32(uint32(fishQueryContactUID)))))
 	if card.TypeID != 2002 || card.Fields[1].StrOr() != fishQueryContactName || card.Fields[3].U32() != 0 {

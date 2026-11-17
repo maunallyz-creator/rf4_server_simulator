@@ -28,6 +28,16 @@ func hSocialMembers(ctx *Ctx) ([]byte, bool) {
 		}
 	}
 	s.mu.Unlock()
+	// 虚拟玩家 UID 段在 900000000+，比任何真实账号都大，排序后真实玩家
+	// 仍然排在最前面，虚拟名册只占列表尾部。
+	for _, vp := range s.onlineVirtualPlayers() {
+		u := uint32(vp.UID)
+		if seen[int64(u)] {
+			continue
+		}
+		ids = append(ids, u)
+		seen[int64(u)] = true
+	}
 	sort.Slice(ids[2:], func(i, j int) bool { return ids[i+2] < ids[j+2] })
 	return encodeSocialTree(ctx, proto.U32Arr(ids))
 }

@@ -82,6 +82,15 @@ func hSocialUserCard(ctx *Ctx) ([]byte, bool) {
 		}
 		return encodeSocialTree(ctx, outer)
 	}
+	// 虚拟玩家名册：名字/等级/奖杯全部来自内存名册，不回落到 profile 查询
+	// （名册里的 UID 在 profile 表里没有行，回落只会得到空名字）。
+	if vp := virtualPlayerByUIDLookup(uid); vp != nil {
+		outer, err := bytesWrappedObject(virtualPlayerCard(vp), ctx.Sess.Table())
+		if err != nil {
+			return nil, false
+		}
+		return encodeSocialTree(ctx, outer)
+	}
 	var p *store.Profile
 	names := ""
 	level := int64(1)
