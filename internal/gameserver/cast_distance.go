@@ -50,9 +50,11 @@ var (
 	// castNominalTestExp 是路亚族标称随 Test 上限放大的指数，由 Test 49g
 	// 锚点反解。
 	castNominalTestExp = 0.41
-	// castNominalDefaultTestExp 是非路亚族（手竿/浮钓/底钓/鲤鱼竿）的指数，
-	// 由德语官服论坛 topic 2219 的鲤鱼竿实测反解。
-	castNominalDefaultTestExp = 0.33
+	// castNominalDefaultTestExp 是非路亚族（手竿/浮钓/底钓/鲤鱼竿）的指数。
+	// 德语官服论坛 topic 2219 同帖有四条重装实测（95 / 105-110 / 115 / 135 /
+	// 146m，配置差异主要在竿与轮），逐条反解得到 0.265~0.326 的区间；取中位
+	// 0.29 而不是最高配那条的 0.326，避免把整族都按顶配推到上限。
+	castNominalDefaultTestExp = 0.29
 )
 
 // CastDistanceContext 是抛投模型的一次只读输入。后续加入风力、抛投姿势、

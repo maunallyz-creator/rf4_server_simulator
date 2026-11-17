@@ -664,8 +664,10 @@ func TestCastCarpRigMatchesForumRange(t *testing.T) {
 		PlayerSecondary: defaultPlayerConditionSecondary,
 		SkillMastery:    100, SkillCastPct: 75,
 	})
-	if d < 130 || d > 165 {
-		t.Fatalf("3.9m/Test2040g/140g/+75%% 应落在 135-146m 区间（含模型容差 130-165），实得 %.2f（nominal=%.1f，因子=%v）",
+	// 同帖四条重装实测分布 95 / 105-110 / 115 / 135 / 146m，配置差异主要在竿与轮；
+	// 指数取中位后本配置落在 112-117m（四条的中位区），而不是顶配那条的 146m。
+	if d < 105 || d > 130 {
+		t.Fatalf("3.9m/Test2040g/140g/+75%% 应落在四条实测的中位区 105-130m，实得 %.2f（nominal=%.1f，因子=%v）",
 			d, castNominalDistanceForRod(16, 2040), factors)
 	}
 	// 同配置只挂 +60%（无竿自带 15%）应略近，且仍远于旧 60 基准的 45m。
@@ -697,8 +699,8 @@ func TestCastNominalNonLureFamilyScalesWithTest(t *testing.T) {
 	if bologna < 35 || bologna > 41 {
 		t.Fatalf("博洛尼亚 Test18 标称应落在 35-41，实得 %.2f", bologna)
 	}
-	if feeder < 62 || feeder > 72 {
-		t.Fatalf("飞德 Test100 标称应落在 62-72，实得 %.2f", feeder)
+	if feeder < 55 || feeder > 62 {
+		t.Fatalf("飞德 Test100 标称应落在 55-62，实得 %.2f", feeder)
 	}
 	// Test 缺失仍回落到族常量，不被分档曲线拉走。
 	if got := castNominalDistanceForRod(1, 0); got != 60.0 {
