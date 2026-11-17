@@ -9,18 +9,17 @@ import (
 )
 
 // 无轮手竿和缺少装配数据时保留旧协议基线；带轮竿使用综合物理模型。
-// 标称距离是修正器链的 100% 力度乘法基准：淡水路亚按官服实测锚点校准
-// （官服俄服满熟练 + 满投距技能 + 未改装低轮廓水滴轮 + UL 竿 + 3.5g 载荷
-// 实测 27m，改装后 30m+；见 specs/changes/cast-official-anchor/spec.md）。
-// 该 27m 是包含技能乘数后的成品距离，故基准值反解为 23.13；海钓路亚
-// （50-54，远投场景）暂留旧值 45 待补锚点；其余默认族同样待锚点。
+// 标称距离是修正器链的 100% 力度乘法基准：淡水路亚按官服手感锚点校准
+// （满级投距技能的 UL 配置满功率 ≈25m，见
+// specs/changes/cast-distance-calibration/spec.md）；海钓路亚（50-54，
+// 远投场景）暂留旧值 45 待补锚点；其余默认族同样待锚点。
 const (
 	castBaseFloatM   float32 = 7.5461488
 	castBaseLureM    float32 = 7.1598907
 	castBaseDefaultM float32 = castBaseFloatM
 
 	castNominalDefaultM    = 60.0
-	castNominalLureM       = 23.13
+	castNominalLureM       = 27.5
 	castNominalMarineLureM = 45.0
 	castMinPoweredM        = 8.0
 )
