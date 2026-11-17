@@ -20,8 +20,14 @@ import (
 //     不并入技能乘数）
 //   - Test 49g 竿 + 63g 载荷 + 6000 线杯封顶 50m
 //
-// 反解得截距 23.13、指数 0.355（见 specs/changes/cast-rod-test-scaling）。
-// 海钓路亚（50-54，远投场景）暂留旧值 45 待补锚点；其余默认族同样待锚点。
+// 反解得截距 23.06、路亚指数 0.41（见 specs/changes/cast-rod-test-scaling）。
+//
+// 非路亚族（手竿/浮钓/底钓/鲤鱼竿）同样必须随竿 Test 放大：德语官服论坛
+// topic 2219 的实测里，3.9m 鲤鱼竿配 140g 铅坠能打出 135-146m，而上游的
+// 固定 60 基准把同一配置压到 49m（差近 3 倍）。该族用同一锚点档、指数
+// 0.33（由 Test 2040g / 140g / +75% 技能 / 146m 一条实测反解，证据等级
+// 低于路亚两锚点，见同 spec 的风险项）。
+// 海钓路亚（50-54，远投场景）暂留旧值 45 待补锚点。
 const (
 	castBaseFloatM   float32 = 7.5461488
 	castBaseLureM    float32 = 7.1598907
@@ -36,13 +42,17 @@ const (
 	castNominalTestAnchorG = 4.0
 )
 
-// 淡水路亚标称曲线的截距与指数。用 var 而非 const，便于测试按锚点重定标
+// 标称曲线的截距与指数。用 var 而非 const，便于测试按锚点重定标
 // 后回填；生产代码只读。
 var (
 	// castNominalLureM 是锚点档（castNominalTestAnchorG）的标称距离。
 	castNominalLureM = 23.06
-	// castNominalTestExp 是标称随 Test 上限放大的指数，由 Test 49g 锚点反解。
+	// castNominalTestExp 是路亚族标称随 Test 上限放大的指数，由 Test 49g
+	// 锚点反解。
 	castNominalTestExp = 0.41
+	// castNominalDefaultTestExp 是非路亚族（手竿/浮钓/底钓/鲤鱼竿）的指数，
+	// 由德语官服论坛 topic 2219 的鲤鱼竿实测反解。
+	castNominalDefaultTestExp = 0.33
 )
 
 // CastDistanceContext 是抛投模型的一次只读输入。后续加入风力、抛投姿势、
@@ -412,20 +422,28 @@ func castNominalDistanceM(rigType int64) float64 {
 
 // castNominalDistanceForRod 按竿的 Test 上限给出标称距离。
 // 官方手册「飛距離は以下の要素で決まります」第 3 条是「釣り竿の特性：
-// 長さ、構造、強さ」，所以标称必须随竿变化。Test 缺失（<=0）按锚点档
-// 处理，避免未登记 Test 的竿凭空拿到大竿的标称。
+// 長さ、構造、強さ」，所以标称必须随竿变化。Test 缺失（<=0）回落到族
+// 常量，避免未登记 Test 的竿凭空拿到大竿的标称。
 func castNominalDistanceForRod(rigType int64, testMaxG float64) float64 {
-	if !rigTypeLureFamily[rigType] {
-		return castNominalDefaultM
-	}
 	if marineRigType(rigType) {
 		// 海钓路亚 50-54 远投场景，锚点未取到前保留旧标称。
 		return castNominalMarineLureM
 	}
-	if math.IsNaN(testMaxG) || testMaxG < castNominalTestAnchorG {
-		testMaxG = castNominalTestAnchorG
+	if math.IsNaN(testMaxG) || testMaxG <= 0 {
+		if rigTypeLureFamily[rigType] {
+			return castNominalLureM
+		}
+		return castNominalDefaultM
 	}
-	return castNominalLureM * math.Pow(testMaxG/castNominalTestAnchorG, castNominalTestExp)
+	t := testMaxG
+	if t < castNominalTestAnchorG {
+		t = castNominalTestAnchorG
+	}
+	exp := castNominalTestExp
+	if !rigTypeLureFamily[rigType] {
+		exp = castNominalDefaultTestExp
+	}
+	return castNominalLureM * math.Pow(t/castNominalTestAnchorG, exp)
 }
 
 // rodTestWeightFactor 把线组载荷换算为抛投重量系数。
