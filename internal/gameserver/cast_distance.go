@@ -409,14 +409,14 @@ func castNominalDistanceM(rigType int64) float64 {
 // 与实际游戏里“重竿远投”的手感相反。
 //
 // 这里按竿自身的 Test 上限给标称分档：Test 上限越大，竿身能带动的线组
-// 越重、满力行程越长，标称随 (testMax/锚点)^0.55 增长。指数取 0.55 而不是
+// 越重、满力行程越长，标称随 (testMax/锚点)\^0.38 增长。指数取 0.55 而不是
 // 线性，是因为抛投距离对载荷的响应本来就次线性；UL 档（Test 上限 <= 8g）
 // 原样保留 27.5，不改变已经校准好的超轻手感。竿未登记 Test 时回落旧标称。
 const (
 	// castNominalRodAnchorG 是 27.5 标称对应的 Test 上限锚点（UL 竿）。
 	castNominalRodAnchorG = 8.0
 	// castNominalRodExponent 控制标称随 Test 上限增长的次线性指数。
-	castNominalRodExponent = 0.55
+	castNominalRodExponent = 0.38
 	// castNominalHandRodM 是手竿族（含博洛尼亚/远投漂）在 UL 锚点的标称。
 	// 手竿靠摆荡投掷、没有轮子放线，实际 25～35m 就是上限；旧表给 60m
 	// 会让 8m 博洛尼亚竿直接抛出 48m（用户实测，明显不对）。
@@ -426,7 +426,7 @@ const (
 )
 
 // castNominalDistanceForRod 返回按竿 Test 上限分档后的满力标称距离。
-// 路亚族按 (testMax/8)^0.55 上浮，超轻档保持 27.5；手竿族用更低的
+// 路亚族按 (testMax/8)\^0.38 上浮，超轻档保持 27.5；手竿族用更低的
 // 20m 基准和更平缓的 0.30 指数；海钓路亚保持原标称不动。
 func castNominalDistanceForRod(rigType int64, rodTestMaxG float64) float64 {
 	if marineRigType(rigType) {

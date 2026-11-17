@@ -68,9 +68,9 @@ Status: done
     期望 ~24.96m，断言带 [24.5, 25.4]；
   - 标称分族：castNominalDistanceM(5)=27.5、(52)=45、(1)/(12)=60；
   - TestCastCalibrationBands 区间整体 ×0.611（27.5/45）收紧
-    *（2026-11-17 本地分档后改为 6000 杯 47.3~48.7、2000 杯 48.5~51.0，见文末）*；
+    *（2026-11-17 本地分档后改为 6000 杯 37.8~38.9、2000 杯 39.0~41.0，见文末）*；
   - 高阶装备上限测试改名重定标（45m 精准抛区间不再可达，新上限 ~29.7m）
-    *（2026-11-17 本地分档后同一配置为 ~68.2 m，见文末「本地定制」）*。
+    *（2026-11-17 本地分档后同一配置为 ~54.5 m，见文末「本地定制」）*。
 - handler 层（hCast，复用 TestCastSnapshotsRequestedDistance 接缝）：
   - 带轮装配 requested = 1.3×上限 → CastM == actionMaxM（收口生效）；
   - 无轮手竿 requested 50 > legacy 7.5 → CastM 仍 50（直通不变）；
@@ -125,7 +125,7 @@ Test 5-30g 的高阶装备（29.7m 上限）。中间与更重的竿全部沿用
 
 本地定制在**不移动 UL 25m 锚点**的前提下向上扩展：
 
-- 路亚族：`nominal = 27.5 × (testMax/8)^0.55`，Test ≤ 8g 时仍为 27.5；
+- 路亚族：`nominal = 27.5 × (testMax/8)^0.38`，Test ≤ 8g 时仍为 27.5；
 - 手竿族（含博洛尼亚 / 远投漂 / 浮钓 / 底钓）：`nominal = 20 × (testMax/8)^0.30`。
   旧值「family 外一律 60」会让 8m / Test 2-18g 的博洛尼亚竿抛出 48.32m，
   8m 手竿靠摆荡投掷的实钓上限在 25m 上下；
@@ -138,7 +138,7 @@ Test 5-30g 的高阶装备（29.7m 上限）。中间与更重的竿全部沿用
 
 - `TestCastFreshwaterLureOfficialAnchorBand`：UL 24.5～25.4m（上游锚点，未变）；
 - `TestCastCalibrationBands`：3m / Test 5-30g，6000 杯 31.8～33.0m、2000 杯 32.8～34.2m；
-- `TestCastHighEndGearCeilingAfterLocalRecalibration`：4.2m / Test 5-30g 满技能 ~68.2m
+- `TestCastHighEndGearCeilingAfterLocalRecalibration`：4.2m / Test 5-30g 满技能 ~54.5m
   （上游 20~30m 手感带不再适用）；
 - `TestCastNominalDistanceScalesWithRodTest`：分档单调、手竿基准低于同 Test 路亚。
 
