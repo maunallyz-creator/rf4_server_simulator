@@ -9,19 +9,40 @@ import (
 )
 
 // 无轮手竿和缺少装配数据时保留旧协议基线；带轮竿使用综合物理模型。
-// 标称距离是修正器链的 100% 力度乘法基准：淡水路亚按官服手感锚点校准
-// （满级投距技能的 UL 配置满功率 ≈25m，见
-// specs/changes/cast-distance-calibration/spec.md）；海钓路亚（50-54，
-// 远投场景）暂留旧值 45 待补锚点；其余默认族同样待锚点。
+// 标称距离是修正器链的 100% 力度乘法基准。官方用户手册把「釣り竿の特性：
+// 長さ、構造、強さ」列为飞距离要素，因此淡水路亚标称必须随竿的 Test 上限
+// 放大，而不是全族共用一个常量（上游 #464 把 45 一刀切成 27.5，UL 与 MH
+// 共用同一个基准，大竿因此被压到 20m 出头）。
+//
+// 两个官服锚点决定曲线的截距与指数：
+//   - Test 4g 竿 + 满熟练满技能 + 未改装低轮廓水滴轮 + 3.5g 载荷 = 27m
+//     （俄服实测；改装 CHYB 轴承与增距润滑油后 30m+，改装是额外距离，
+//     不并入技能乘数）
+//   - Test 49g 竿 + 63g 载荷 + 6000 线杯封顶 50m
+//
+// 反解得截距 23.13、指数 0.355（见 specs/changes/cast-rod-test-scaling）。
+// 海钓路亚（50-54，远投场景）暂留旧值 45 待补锚点；其余默认族同样待锚点。
 const (
 	castBaseFloatM   float32 = 7.5461488
 	castBaseLureM    float32 = 7.1598907
 	castBaseDefaultM float32 = castBaseFloatM
 
 	castNominalDefaultM    = 60.0
-	castNominalLureM       = 27.5
 	castNominalMarineLureM = 45.0
 	castMinPoweredM        = 8.0
+
+	// castNominalTestAnchorG 是标称曲线的锚点 Test 上限：该档对应官服 UL
+	// 实测 27m（满技能）。
+	castNominalTestAnchorG = 4.0
+)
+
+// 淡水路亚标称曲线的截距与指数。用 var 而非 const，便于测试按锚点重定标
+// 后回填；生产代码只读。
+var (
+	// castNominalLureM 是锚点档（castNominalTestAnchorG）的标称距离。
+	castNominalLureM = 23.06
+	// castNominalTestExp 是标称随 Test 上限放大的指数，由 Test 49g 锚点反解。
+	castNominalTestExp = 0.41
 )
 
 // CastDistanceContext 是抛投模型的一次只读输入。后续加入风力、抛投姿势、
@@ -386,14 +407,25 @@ func castBaseDistanceBits(rigType int64) uint32 {
 }
 
 func castNominalDistanceM(rigType int64) float64 {
-	if rigTypeLureFamily[rigType] {
-		if marineRigType(rigType) {
-			// 海钓路亚 50-54 远投场景，锚点未取到前保留旧标称。
-			return castNominalMarineLureM
-		}
-		return castNominalLureM
+	return castNominalDistanceForRod(rigType, 0)
+}
+
+// castNominalDistanceForRod 按竿的 Test 上限给出标称距离。
+// 官方手册「飛距離は以下の要素で決まります」第 3 条是「釣り竿の特性：
+// 長さ、構造、強さ」，所以标称必须随竿变化。Test 缺失（<=0）按锚点档
+// 处理，避免未登记 Test 的竿凭空拿到大竿的标称。
+func castNominalDistanceForRod(rigType int64, testMaxG float64) float64 {
+	if !rigTypeLureFamily[rigType] {
+		return castNominalDefaultM
 	}
-	return castNominalDefaultM
+	if marineRigType(rigType) {
+		// 海钓路亚 50-54 远投场景，锚点未取到前保留旧标称。
+		return castNominalMarineLureM
+	}
+	if math.IsNaN(testMaxG) || testMaxG < castNominalTestAnchorG {
+		testMaxG = castNominalTestAnchorG
+	}
+	return castNominalLureM * math.Pow(testMaxG/castNominalTestAnchorG, castNominalTestExp)
 }
 
 // rodTestWeightFactor 把线组载荷换算为抛投重量系数。
@@ -489,7 +521,7 @@ func castModifiersSnapshot() []CastDistanceModifier {
 }
 
 func calculateCastDistance(c CastDistanceContext) (float64, map[string]float64) {
-	distance := castNominalDistanceM(c.RigType)
+	distance := castNominalDistanceForRod(c.RigType, c.RodTestMaxG)
 	factors := make(map[string]float64)
 	for _, modifier := range castModifiersSnapshot() {
 		if modifier == nil {
@@ -601,7 +633,7 @@ func (s *Server) castDistanceForRig(ctx context.Context, uid int64, rodGUID stri
 		PlayerPrimary: p.PlayerPrimary, PlayerSecondary: p.PlayerSecondary,
 		SkillCategory: p.SkillCategory, SkillMastery: p.SkillMastery, SkillCastPct: p.SkillCastPct,
 	}
-	p.BaseM = castNominalDistanceM(rigType)
+	p.BaseM = castNominalDistanceForRod(rigType, p.RodTestMaxG)
 	p.Friction = perf.CastFriction
 	p.Efficiency = perf.CastEfficiency
 	p.BearingQuality = perf.BearingQuality
