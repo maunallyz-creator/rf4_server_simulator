@@ -318,9 +318,11 @@ func castSpoolSizeFactor(size int64) float64 {
 	case 21, 22:
 		return 0.82
 	case 23:
-		return 0.56
+		// 本地定制（2026-11-17）：23/24 是大线杯/船钓轮档，旧值 0.56/0.52
+		// 直接砍掉近一半行程，与“大杯出线更顺”的实际手感相反。
+		return 0.80
 	case 24:
-		return 0.52
+		return 0.82
 	default:
 		return 1
 	}
@@ -394,6 +396,35 @@ func castNominalDistanceM(rigType int64) float64 {
 		return castNominalLureM
 	}
 	return castNominalDefaultM
+}
+
+// 本地定制（2026-11-17）：上游把淡水路亚标称统一压到 27.5，这个值是按
+// 1.8m UL（Test 1-8g）的官服手感锚点定的，只对超轻竿成立。重竿沿用同一
+// 基数后，3m / Test 15-70g 的重型路亚配 63g 饵满力只剩 15m（用户实测），
+// 与实际游戏里“重竿远投”的手感相反。
+//
+// 这里按竿自身的 Test 上限给标称分档：Test 上限越大，竿身能带动的线组
+// 越重、满力行程越长，标称随 (testMax/锚点)^0.45 增长。指数取 0.45 而不是
+// 线性，是因为抛投距离对载荷的响应本来就次线性；UL 档（Test 上限 <= 8g）
+// 原样保留 27.5，不改变已经校准好的超轻手感。竿未登记 Test 时回落旧标称。
+const (
+	// castNominalRodAnchorG 是 27.5 标称对应的 Test 上限锚点（UL 竿）。
+	castNominalRodAnchorG = 8.0
+	// castNominalRodExponent 控制标称随 Test 上限增长的次线性指数。
+	castNominalRodExponent = 0.45
+)
+
+// castNominalDistanceForRod 返回按竿 Test 上限分档后的满力标称距离。
+// 非路亚族（手竿/浮钓/底钓）与海钓路亚保持原有标称，不在本次本地定制范围。
+func castNominalDistanceForRod(rigType int64, rodTestMaxG float64) float64 {
+	base := castNominalDistanceM(rigType)
+	if !rigTypeLureFamily[rigType] || marineRigType(rigType) {
+		return base
+	}
+	if rodTestMaxG <= castNominalRodAnchorG {
+		return base
+	}
+	return base * math.Pow(rodTestMaxG/castNominalRodAnchorG, castNominalRodExponent)
 }
 
 // rodTestWeightFactor 把线组载荷换算为抛投重量系数。
@@ -601,7 +632,8 @@ func (s *Server) castDistanceForRig(ctx context.Context, uid int64, rodGUID stri
 		PlayerPrimary: p.PlayerPrimary, PlayerSecondary: p.PlayerSecondary,
 		SkillCategory: p.SkillCategory, SkillMastery: p.SkillMastery, SkillCastPct: p.SkillCastPct,
 	}
-	p.BaseM = castNominalDistanceM(rigType)
+	// 本地定制：路亚族标称按竿 Test 上限分档（超轻档仍是 27.5）。
+	p.BaseM = castNominalDistanceForRod(rigType, p.RodTestMaxG)
 	p.Friction = perf.CastFriction
 	p.Efficiency = perf.CastEfficiency
 	p.BearingQuality = perf.BearingQuality

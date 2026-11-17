@@ -248,6 +248,37 @@ func TestCastNominalDistanceByRigFamily(t *testing.T) {
 	}
 }
 
+// 本地定制（2026-11-17）：上游的 27.5 是按 1.8m UL（Test 1-8g）锚定的，
+// 只对超轻竿成立；重竿沿用同一基数后 3m / Test 15-70g 配 63g 饵满力只剩
+// 15m（用户实测）。这里锁定分档口径：超轻档不变，Test 上限越大标称越高，
+// 海钓路亚和非路亚族不受影响。
+func TestCastNominalDistanceScalesWithRodTest(t *testing.T) {
+	ul := castNominalDistanceForRod(5, 8)
+	if math.Abs(ul-27.5) > 1e-9 {
+		t.Fatalf("超轻档（Test 上限 8g）标称应保持 27.5，实得 %.2f", ul)
+	}
+	if got := castNominalDistanceForRod(5, 0); math.Abs(got-27.5) > 1e-9 {
+		t.Fatalf("竿未登记 Test 应回落 27.5，实得 %.2f", got)
+	}
+	mid := castNominalDistanceForRod(5, 30)
+	if mid < 45 || mid > 55 {
+		t.Fatalf("Test 上限 30g 的中型路亚标称应落在 45～55，实得 %.2f", mid)
+	}
+	heavy := castNominalDistanceForRod(5, 70)
+	if heavy < 65 || heavy > 80 {
+		t.Fatalf("Test 上限 70g 的重型路亚标称应落在 65～80，实得 %.2f", heavy)
+	}
+	if !(ul < mid && mid < heavy) {
+		t.Fatalf("标称应随 Test 上限单调递增: ul=%.2f mid=%.2f heavy=%.2f", ul, mid, heavy)
+	}
+	if got := castNominalDistanceForRod(52, 70); got != 45.0 {
+		t.Fatalf("海钓路亚标称应保持 45（本地定制不动海钓），实得 %.2f", got)
+	}
+	if got := castNominalDistanceForRod(1, 70); got != 60.0 {
+		t.Fatalf("非路亚族标称应保持 60，实得 %.2f", got)
+	}
+}
+
 func TestCastDynamicModifiersAreMonotonic(t *testing.T) {
 	if !(castPowerFactor(1) > castPowerFactor(0.5) && castPowerFactor(0.5) > castPowerFactor(0.1)) {
 		t.Fatal("抛投力度应单调增加距离")
