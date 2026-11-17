@@ -416,7 +416,7 @@ const (
 	// castNominalRodAnchorG 是 27.5 标称对应的 Test 上限锚点（UL 竿）。
 	castNominalRodAnchorG = 8.0
 	// castNominalRodExponent 控制标称随 Test 上限增长的次线性指数。
-	castNominalRodExponent = 0.45
+	castNominalRodExponent = 0.25
 	// castNominalHandRodM 是手竿族（含博洛尼亚/远投漂）在 UL 锚点的标称。
 	// 手竿靠摆荡投掷、没有轮子放线，实际 25～35m 就是上限；旧表给 60m
 	// 会让 8m 博洛尼亚竿直接抛出 48m（用户实测，明显不对）。

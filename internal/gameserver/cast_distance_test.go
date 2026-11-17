@@ -154,16 +154,16 @@ func castCalibrationDistance(payloadG float64, spoolSize int64) float64 {
 
 func TestCastCalibrationBands(t *testing.T) {
 	// 本地定制（2026-11-17）：标称改为按竿 Test 上限分档后，这个 helper 的
-	// Test 上限 30g 对应标称 ≈49.85（旧口径固定 27.5）；同时线杯系数整体
-	// 抬回接近 1 的带宽，所以绝对值上移、但“小杯略远”的相对关系保留。
+	// Test 上限 30g 对应标称 ≈38.27（旧口径固定 27.5）；线杯系数抬回接近 1
+	// 的带宽，所以绝对值随分档上移，但“小杯略远”的相对关系保留。
 	for _, payload := range []float64{8, 10} {
 		largeSpool := castCalibrationDistance(payload, 5) // 6000
 		smallSpool := castCalibrationDistance(payload, 2) // 2000
-		if largeSpool < 41.0 || largeSpool > 43.0 {
-			t.Fatalf("6000线杯 %.0fg 距离=%0.2f，期望41.0～43.0米区间", payload, largeSpool)
+		if largeSpool < 31.8 || largeSpool > 33.0 {
+			t.Fatalf("6000线杯 %.0fg 距离=%0.2f，期望31.8～33.0米区间", payload, largeSpool)
 		}
-		if smallSpool < 42.5 || smallSpool > 45.0 {
-			t.Fatalf("2000线杯 %.0fg 距离=%0.2f，期望42.5～45.0米区间", payload, smallSpool)
+		if smallSpool < 32.8 || smallSpool > 34.2 {
+			t.Fatalf("2000线杯 %.0fg 距离=%0.2f，期望32.8～34.2米区间", payload, smallSpool)
 		}
 		if smallSpool <= largeSpool {
 			t.Fatalf("小线杯应不小于6000线杯: 小杯=%0.2f 大杯=%0.2f", smallSpool, largeSpool)
@@ -190,8 +190,8 @@ func TestCastPlayerStateFactorZeroStateUsesFloor(t *testing.T) {
 }
 
 // 本地定制（2026-11-17）：上游把高阶装备顶配锁在 ~29.7m，来源是把 27.5
-// 的 UL 标称套到 4.2m / Test 5-30g 的配置上。用户实测该配置满力只有
-// 25～30m、与重竿远投手感相反；标称按 Test 上限分档后同一配置落在 ~59.7m。
+// 的 UL 标称套到 4.2m / Test 5-30g 的配置上，导致所有中重竿都抛不远；
+// 标称按 Test 上限分档（(testMax/8)^0.25）后同一配置落在 ~45.9m。
 // 此测试改为锁定本地口径（上游 20~30m 手感带不再适用）。
 func TestCastHighEndGearCeilingAfterLocalRecalibration(t *testing.T) {
 	d, _ := calculateCastDistance(CastDistanceContext{
@@ -203,8 +203,8 @@ func TestCastHighEndGearCeilingAfterLocalRecalibration(t *testing.T) {
 		PlayerPrimary: defaultPlayerConditionPrimary, PlayerSecondary: defaultPlayerConditionSecondary,
 		SkillMastery: 100, SkillCastPct: 10,
 	})
-	if d < 58.0 || d > 61.5 {
-		t.Fatalf("本地重标定后高阶装备上限应落在 ~59.7m，实得%0.2f", d)
+	if d < 44.5 || d > 47.5 {
+		t.Fatalf("本地重标定后高阶装备上限应落在 ~45.9m，实得%0.2f", d)
 	}
 }
 
@@ -263,12 +263,12 @@ func TestCastNominalDistanceScalesWithRodTest(t *testing.T) {
 		t.Fatalf("竿未登记 Test 应回落 27.5，实得 %.2f", got)
 	}
 	mid := castNominalDistanceForRod(5, 30)
-	if mid < 45 || mid > 55 {
-		t.Fatalf("Test 上限 30g 的中型路亚标称应落在 45～55，实得 %.2f", mid)
+	if mid < 36 || mid > 40 {
+		t.Fatalf("Test 上限 30g 的中型路亚标称应落在 36～40，实得 %.2f", mid)
 	}
 	heavy := castNominalDistanceForRod(5, 70)
-	if heavy < 65 || heavy > 80 {
-		t.Fatalf("Test 上限 70g 的重型路亚标称应落在 65～80，实得 %.2f", heavy)
+	if heavy < 45 || heavy > 49 {
+		t.Fatalf("Test 上限 70g 的重型路亚标称应落在 45～49，实得 %.2f", heavy)
 	}
 	if !(ul < mid && mid < heavy) {
 		t.Fatalf("标称应随 Test 上限单调递增: ul=%.2f mid=%.2f heavy=%.2f", ul, mid, heavy)

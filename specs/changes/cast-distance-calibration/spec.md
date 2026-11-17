@@ -122,7 +122,7 @@ Test 5-30g 的高阶装备（29.7m 上限）。中间与更重的竿全部沿用
 
 本地定制在**不移动 UL 25m 锚点**的前提下向上扩展：
 
-- 路亚族：`nominal = 27.5 × (testMax/8)^0.45`，Test ≤ 8g 时仍为 27.5；
+- 路亚族：`nominal = 27.5 × (testMax/8)^0.25`，Test ≤ 8g 时仍为 27.5；
 - 手竿族（含博洛尼亚 / 远投漂 / 浮钓 / 底钓）：`nominal = 20 × (testMax/8)^0.30`。
   旧值「family 外一律 60」会让 8m / Test 2-18g 的博洛尼亚竿抛出 48.32m，
   8m 手竿靠摆荡投掷的实钓上限在 25m 上下；
@@ -134,8 +134,8 @@ Test 5-30g 的高阶装备（29.7m 上限）。中间与更重的竿全部沿用
 本地新锚点（全部有断言）：
 
 - `TestCastFreshwaterLureOfficialAnchorBand`：UL 24.5～25.4m（上游锚点，未变）；
-- `TestCastCalibrationBands`：3m / Test 5-30g，6000 杯 41.0～43.0m、2000 杯 42.5～45.0m；
-- `TestCastHighEndGearCeilingAfterLocalRecalibration`：4.2m / Test 5-30g 满技能 ~59.7m
+- `TestCastCalibrationBands`：3m / Test 5-30g，6000 杯 31.8～33.0m、2000 杯 32.8～34.2m；
+- `TestCastHighEndGearCeilingAfterLocalRecalibration`：4.2m / Test 5-30g 满技能 ~45.9m
   （上游 20~30m 手感带不再适用）；
 - `TestCastNominalDistanceScalesWithRodTest`：分档单调、手竿基准低于同 Test 路亚。
 
