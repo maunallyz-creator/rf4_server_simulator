@@ -95,6 +95,7 @@
 - [工程工作流](agents/workflow.md)：快速路径与约束路径的分级、门禁级别。
 - [变更记录约定](agents/issue-tracker.md)：`specs/changes` 目录与状态流转。
 - [档案与技能树统一显示可用技能点](../specs/changes/issue-401-skill-points/spec.md)：Issue #401 的修复范围与验证状态。
+- [商店扣款前校验物品可下发性](../specs/changes/store-goods-wire-preflight/spec.md)：吸引成分购买可见性与异常商品拒购边界。
 - [领域文档约定](agents/domain.md)：文档地图、证据等级、对账表。
 - [ADR 0001](adr/0001-engineering-constraints.md)：为什么采用按风险分级的约束体系。
 

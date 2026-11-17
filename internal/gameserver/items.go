@@ -803,6 +803,10 @@ func (s *Server) rebuildRod(ctx context.Context, it *store.Item, obj *proto.Valu
 			break
 		}
 		sysID, ok := rodPartSystemID(def, attr)
+		old := obj.Fields[i].Val
+		if installed := s.childSystemID(ctx, old); installed != "" {
+			sysID, ok = installed, true
+		}
 		if !ok || sysID == "" {
 			continue
 		}
@@ -815,10 +819,16 @@ func (s *Server) rebuildRod(ctx context.Context, it *store.Item, obj *proto.Valu
 		}
 		// 竿侧受力磨损把子件耐久持久化在 DB 字段树里（applyRodStressWear）：
 		// 现建子件前先把已持久化的耐久合并回来，否则每次快照都会把磨损抹回满值。
-		// 状态位/其余字段仍以现建为准，只合并耐久一项。
-		if old := obj.Fields[i].Val; old != nil && old.Kind == proto.KindObj {
-			if dur := reelChildDurability(old); dur < 1 {
-				setReelChildDurability(child, dur)
+		// 状态位仍按竿槽重建；已安装件保留实例 GUID 和耐久。
+		if old != nil && old.Kind == proto.KindObj {
+			if idx := fieldIdxByCS(old.Class, csGUID); idx >= 0 && idx < old.FieldCount() && old.Fields[idx].Hex != "" {
+				child.Fields[fieldIdxByCS(child.Class, csGUID)].Hex = old.Fields[idx].Hex
+			}
+			if idx := fieldIdxByCS(old.Class, csDurability); idx >= 0 && idx < old.FieldCount() {
+				setReelChildDurability(child, reelChildDurability(old))
+			}
+			if idx := fieldIdxByCS(old.Class, csCreated); idx >= 0 && idx < old.FieldCount() {
+				child.Fields[fieldIdxByCS(child.Class, csCreated)].Num = old.Fields[idx].Num
 			}
 		}
 		obj.Fields[i].Val = child
@@ -862,7 +872,7 @@ func (s *Server) rebuildRod(ctx context.Context, it *store.Item, obj *proto.Valu
 //
 // f5 的 field[2] 是 gcfcdnfmnbh 列表（品类、guid、附加值），客户端工作坊
 // 与装配界面都按它逐行渲染零件。只写 f0..f2 而不登记进 f5 时，零件行为空。
-// 已存在的 guid 不重复添加；非竿或没有 f5 时直接返回。
+// 同品类旧索引由当前部件替换；没有 f5 时直接返回。
 func (s *Server) appendFactoryPartsToRig(ctx context.Context, obj *proto.Value) {
 	if obj == nil || obj.Kind != proto.KindObj || obj.FieldCount() <= 5 {
 		return
@@ -875,15 +885,6 @@ func (s *Server) appendFactoryPartsToRig(ctx context.Context, obj *proto.Value) 
 	if arr == nil {
 		return
 	}
-	seen := map[string]bool{}
-	for _, e := range arr.Items {
-		if e == nil || e.Kind != proto.KindObj || e.FieldCount() < 2 {
-			continue
-		}
-		if g := e.Fields[1].Hex; g != "" {
-			seen[g] = true
-		}
-	}
 	for i := 0; i < 3 && i < obj.FieldCount(); i++ {
 		child := obj.Fields[i].Val
 		if child == nil || child.Kind != proto.KindObj {
@@ -894,7 +895,7 @@ func (s *Server) appendFactoryPartsToRig(ctx context.Context, obj *proto.Value) 
 			continue
 		}
 		g := child.Fields[gidx].Hex
-		if g == "" || seen[g] {
+		if g == "" {
 			continue
 		}
 		var cat uint64
@@ -903,12 +904,21 @@ func (s *Server) appendFactoryPartsToRig(ctx context.Context, obj *proto.Value) 
 				cat = uint64(def.Category)
 			}
 		}
-		arr.Items = append(arr.Items, wiregen.MustMakeObj("gcfcdnfmnbh", map[int]*proto.Value{
+		if cat == 0 {
+			continue
+		}
+		kept := arr.Items[:0]
+		for _, e := range arr.Items {
+			if e != nil && e.Kind == proto.KindObj && e.FieldCount() >= 2 && e.Fields[0].U32() == uint32(cat) {
+				continue
+			}
+			kept = append(kept, e)
+		}
+		arr.Items = append(kept, wiregen.MustMakeObj("gcfcdnfmnbh", map[int]*proto.Value{
 			0: proto.U32(uint32(cat)),
 			1: proto.Guid(g),
 			2: proto.U32(0),
 		}))
-		seen[g] = true
 	}
 }
 

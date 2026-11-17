@@ -8,8 +8,12 @@ import (
 	"time"
 )
 
-// 官服 f5 锚点（A 级 14/14 样本，specs/changes/fish-official-data-tables/spec.md）。
+// 官服 f5 锚点（A 级 14/14 样本，specs/changes/fish-official-data-tables/spec.md；
+// 2026-11-16/17 断电抢救包新增 16 种（m_carp 无 f5 实测，见 fish-pull-k-table
+// spec v2/v2.1.1）。
 // tolPct = 该种种内散布带（官方随机因子，grade 检验证实与档位无关）。
+// c.carp v2 由 6 放宽到 20：新样本实测每克 2.42~3.17（655g vs 631g 差 30%），
+// 旧 6% 是两样本巧合收紧，新散布带以 4 样本极差为准。
 var officialStaminaAnchors = []struct {
 	species string
 	weightG int64
@@ -28,8 +32,33 @@ var officialStaminaAnchors = []struct {
 	{"perch", 642, 1586.1823, 19},
 	{"perch", 1070, 2739.0903, 19},
 	{"crucian", 611, 1604.2435, 25},
-	{"c.carp", 655, 1587.5297, 6},
+	{"c.carp", 655, 1587.5297, 20},
+	{"c.carp", 631, 2002.2, 20},
 	{"g_carp", 10307, 30384.6, 60},
+	// —— v2 新实测种（2026-11-16/17 断电抢救包；散布带按样本极差）——
+	// coalfish 每克 7.27~9.89（702g 是低散布端，均值口径偏离 +23.5%）→ tol 25。
+	{"coalfish", 3027, 29950.7, 25},
+	{"coalfish", 702, 5103.2, 25},
+	{"atl_cod", 5677, 41758.1, 15},
+	{"atl_cod", 2674, 16623.4, 15},
+	{"menek", 6117, 45057.0, 5},
+	{"makrel", 1891, 33727.9, 3},
+	{"cha_herring", 114, 2198.9, 3},
+	{"atl_herring", 560, 6554.6, 3},
+	{"pollachius", 2387, 17940.6, 3},
+	{"m_scorpius", 585, 2552.3, 15},
+	{"m_scorpius", 205, 851.3, 15},
+	{"shemaya_cha", 237, 1699.7, 25},
+	{"shemaya_cha", 117, 995.0, 25},
+	{"tiulka", 10, 33.3, 20},
+	{"tiulka", 13, 36.4, 20},
+	{"rudd", 402, 1761.5, 25},
+	{"rudd", 196, 573.3, 25},
+	{"pumps_sunfish", 52, 247.0, 3},
+	{"n_carp", 4405, 8705.3, 3},
+	{"carp_ghost", 4513, 10457.1, 3},
+	{"kw_tench", 987, 2050.9, 3},
+	{"c_bleak", 24, 68.1, 3},
 }
 
 // TestFishStaminaMatchesOfficialAnchors 防回归：实测种 f5 必须落在官方散布带内。

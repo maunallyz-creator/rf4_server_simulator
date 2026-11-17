@@ -480,13 +480,32 @@ func (s *Server) applyFightReelWear(ctx context.Context, uid int64, w fightReelW
 			return false
 		}
 	}
-	if err := s.DB.UpdateItemFields(ctx, reel.GUID, fj, reel.Qty, durability, reel.Workmanship, reel.RigGUID); err != nil {
-		return false
-	}
 	reel.Durability = durability
 	reel.FieldsJSON = fj
-	perf, perr := s.syncReelPerformance(ctx, reel)
+	perf, perr := s.buildReelPerformance(ctx, reel)
 	if perr != nil {
+		return false
+	}
+	tx, err := s.DB.SQL.BeginTx(ctx, nil)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := s.DB.UpdateItemFieldsTx(ctx, tx, reel.GUID, fj, reel.Qty, durability, reel.Workmanship, reel.RigGUID); err != nil {
+		return false
+	}
+	if err := s.DB.UpsertReelPerformanceTx(ctx, tx, *perf); err != nil {
+		return false
+	}
+	// 轮体耐久从正数跌到 0 就是「这一次坏了」：零件磨损同样能把本体打穿，
+	// 只认 outcome.ReelBroken 会漏掉这条通道。耐久可能需要和计数一起回滚，
+	// 所以两者必须同一事务提交。
+	if before > 0 && durability == 0 {
+		if err := store.BumpPlayerCounter(ctx, tx, uid, "reel_breaks"); err != nil {
+			return false
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return false
 	}
 	// 竿侧零件与前导随同一笔受力账落库；前导 GUID 回填账本供下发使用。

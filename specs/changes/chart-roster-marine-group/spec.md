@@ -106,3 +106,7 @@ Status: in-progress
   “海图集合 ∪ 词表”会保留这 6 种既有的海水组误判；本 PR 为保持淡水项
   逐字节不变暂不改变其行为。后续若要让海图归属成为唯一真源，应在静态库
   可用时停用该词表并补回归。
+  后续兑现（PR #516 复审，2026-11-17）：淡水-only 误伤条目 `agar`/`warm`
+  已移出 marine 词表，由 f8 组表直查归 predator/sunfish（见
+  fish-pull-k-table spec v2.1.2）；其余 4 种为里海流域洄游真海鱼，
+  词表 marine 与 marine_pelagic 组语义同向，保留。

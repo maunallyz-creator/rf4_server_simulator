@@ -306,7 +306,10 @@ func grantPreparedItemTx(ctx context.Context, tx *sql.Tx, prepared *store.Item, 
 			ORDER BY slot, created_ts, guid LIMIT 1`,
 			prepared.UID, prepared.Container, prepared.ItemID))
 		if err == nil {
-			fields, _ := FieldsFromJSON(row.FieldsJSON)
+			fields, err := FieldsFromJSON(row.FieldsJSON)
+			if err != nil {
+				return nil, false, fmt.Errorf("解析旧物品堆 %s: %w", row.GUID, err)
+			}
 			cur := stackCountTx(ctx, tx, row)
 			add := prepared.Qty
 			if add < 1 {

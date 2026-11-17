@@ -45,7 +45,9 @@ var fishFightArchetypes = map[string]fishFightArchetype{
 }
 
 func fishFightArchetypeFor(species string) fishFightArchetype {
-	sp := strings.ToLower(strings.TrimSpace(species))
+	// 皮肤变种继承宿主习性（PR #516 复审 P2-2）：与 f8 的 fishPullParamFor
+	// 同源，一层别名无环。宿主均为实测种，词表对实测种的判定即宿主口径。
+	sp := fishPullAliasHost(species)
 	has := func(parts ...string) bool {
 		for _, part := range parts {
 			if strings.Contains(sp, part) {
@@ -72,7 +74,8 @@ func fishFightArchetypeFor(species string) fishFightArchetype {
 	case has("carp", "bream", "tench", "barbel", "buffalo", "karasekarp"):
 		return fishFightArchetypes["cyprinid"]
 	case has("roach", "rudd", "dace", "bleak", "gudgeon", "minnow",
-		"vendace", "sabrefish", "shemaya", "zubatka", "vobla", "stickleback"):
+		"vendace", "sabrefish", "shemaya", "zubatka", "vobla", "stickleback",
+		"tiulka"):
 		return fishFightArchetypes["small"]
 	case has("cod", "herring", "mackerel", "makrel", "tuna", "thynnus",
 		"halibut", "kambala", "coalfish", "pollachius", "merluza", "molva",
@@ -80,10 +83,13 @@ func fishFightArchetypeFor(species string) fishFightArchetype {
 		// 词表修正（搏鱼脱钩方案 §五C）：piksha 实测为海水鲽科，此前被显式
 		// 列在 ambush 关键词表里（淡水伏击组；不是子串匹配——has 是
 		// strings.Contains，"piksha" 并不含 "pike"）；menek/merlang 为海图鱼种。
-		// agar/warm 是旧词表命中、静态库中只在淡水图出现，当前为行为兼容保留
-		// （见 chart-roster-marine-group spec）。piksha 的组归属移动对行为中性：
-		// 它有官方直配池（buildFightCurves 鱼种池优先），f5/f6 已有显式表。
-		"merlang", "menek", "piksha", "agar", "warm"):
+		// piksha 的组归属移动对行为中性：它有官方直配池（buildFightCurves
+		// 鱼种池优先），f5/f6 已有显式表。
+		// agar/warm 曾为「行为兼容保留」（chart-roster-marine-group spec），
+		// PR #516 复审实证其为海水组误伤（只在淡水图，warm 的 f5 曾吃
+		// 8.445/g 海水耐力），已移除：现分别由 f8 组表直查归 predator/
+		// sunfish（见 fishPullGroupFightKey）。
+		"merlang", "menek", "piksha"):
 		return fishFightArchetypes["marine"]
 	default:
 		return fishFightArchetypes["default"]

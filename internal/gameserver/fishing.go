@@ -673,120 +673,386 @@ const (
 // （实测 461g 鱼被磨损账记成 6.57kg 拉力）。口径见 specs/changes/reel-wear-pull-unit/spec.md。
 const newtonPerKgf = 9.80665
 
-// fishPullK0 是逐鱼种拉力基值（=1kg 体重时的 k，N/kg），来自官服 14/14 抓包
-// A 级样本按 k0 = k − fishPullLnSlope·ln(w_kg) 反推；f8 = w_kg × (K0 + slope·ln(w_kg))。
-// 种内斜率 ~0.3–0.4，已用 perch/crucian/g_carp 多重量级样本钉死；样本与推导见
-// specs/changes/fish-pull-k-table/spec.md「Further Notes」。
+// fishPullParam 逐鱼种拉力参数：f8 = w_kg × (K0 + Slope·ln(w_kg))（牛）。
+// K0 = 1kg 体重时的 k（N/kg）；Slope = k 对 ln(w_kg) 的斜率。
+// 2026-11-16/17 断电抢救包 53 条 14/14 A 级样本（累计 84 条）发现鱼种分两类：
+//   - 恒 k 类（Slope=0）：海鱼与小型鱼，k 落在离散集合 {17.66, 18.64, 19.62,
+//     21.58, 22.56, 23.54, 25.53}，同种跨体重档 k 精确不变（coalfish/atl_cod
+//     702~5677g 恒 21.58、m_scorpius 205~1142g 恒 17.66、shemaya_cha/tiulka/
+//     menek 恒 18.64），疑似服务端曲线池直配幅值；
+//   - 变 k 类（Slope 0.23~0.59）：鲤科淡水鱼，k 随体重对数上行，斜率鱼种各异。
+//
+// Slope<0 = 单样本未标定斜率，回落全局 fishPullLnSlope（鲤科先验 0.35）。
+type fishPullParam struct {
+	K0    float64
+	Slope float64
+}
+
 const fishPullLnSlope = 0.35
 
-var fishPullK0 = map[string]float64{
-	"merlang":    21.1,
-	"b_gill":     20.4,
-	"taran":      18.8,
-	"g_carp":     18.5,
-	"piksha":     18.3,
-	"b_carp":     18.0,
-	"n.pike":     17.3,
-	"perch":      17.6,
-	"din_l_carp": 16.9,
-	"carp":       16.5,
-	"c.roach":    16.4,
-	"crucian":    15.05,
-	"c.carp":     13.7,
-	"s.bream":    13.0,
+var fishPullK0 = map[string]fishPullParam{
+	// —— 变 k 类（鲤科族，n≥3 跨度足够，自拟合 slope）——
+	"perch":   {K0: 17.60, Slope: 0.38}, // 9 样本 93~1070g
+	"carp":    {K0: 16.50, Slope: 0.49}, // 7 样本 1063~5710g
+	"crucian": {K0: 15.05, Slope: 0.35}, // 6 样本 193~743g
+	"c.carp":  {K0: 13.84, Slope: 0.45}, // 4 样本 140~1574g
+	"c.roach": {K0: 16.36, Slope: 0.23}, // 3 样本 150~713g
+	"rudd":    {K0: 19.24, Slope: 0.53}, // 4 样本 195~402g（2026-11-16 新实测）
+	"g_carp":  {K0: 18.79, Slope: 0.23}, // 5 样本 4880~21742g
+	"m_carp":  {K0: 16.27, Slope: 0.59}, // 4 样本 2312~5370g（新）；仅拟合参数、无单样本 f8 锚点（低置信，见 spec v2）
+	// —— 单样本（Slope<0 → 全局 0.35；鲤科按鲤科先验）——
+	"carp_ghost": {K0: 16.73, Slope: -1}, // 4513g（新）
+	"n_carp":     {K0: 16.53, Slope: -1}, // 4405g（新）
+	"kw_tench":   {K0: 18.68, Slope: -1}, // 987g（新）
+	"c_bleak":    {K0: 18.81, Slope: -1}, // 24g（新；ln 外推远，低置信）
+	"n.pike":     {K0: 17.30, Slope: -1},
+	"din_l_carp": {K0: 16.94, Slope: -1},
+	"b_carp":     {K0: 18.00, Slope: -1},
+	"s.bream":    {K0: 13.00, Slope: -1},
+	"merlang":    {K0: 21.10, Slope: -1}, // 252g 实测 k=20.60；海鱼疑似恒k，待第二样本
+	// —— 恒 k 类（海鱼/小型鱼，Slope=0）——
+	"coalfish":      {K0: 21.58, Slope: 0}, // 4 样本 702~3027g 精确恒
+	"atl_cod":       {K0: 21.58, Slope: 0}, // 2 样本 2674~5677g
+	"m_scorpius":    {K0: 17.66, Slope: 0}, // 5 样本 205~1142g
+	"shemaya_cha":   {K0: 18.64, Slope: 0}, // 4 样本 117~237g
+	"tiulka":        {K0: 18.64, Slope: 0}, // 6 样本 10~13g
+	"pumps_sunfish": {K0: 19.62, Slope: 0}, // 2 样本 52g（与 b_gill 同离散值）
+	"menek":         {K0: 18.64, Slope: 0}, // 6117g
+	"pollachius":    {K0: 22.56, Slope: 0}, // 2387g
+	"atl_herring":   {K0: 22.57, Slope: 0}, // 560g
+	"makrel":        {K0: 23.54, Slope: 0}, // 1891g
+	"cha_herring":   {K0: 25.53, Slope: 0}, // 114g（全表最高）
+	"taran":         {K0: 18.64, Slope: 0}, // 611g 实测 k 与离散值精确重合，v2 重估
+	"piksha":        {K0: 18.64, Slope: 0}, // 2975g 同上
+	"b_gill":        {K0: 19.62, Slope: 0}, // 113g 同上
 }
 
-// fishPullGroupK0 是未实测鱼种的习性组拉力基值（v1 推断，依据已实测样本呈现的
-// 梯度：同科体型单调、海水/洄游高于静水；推断组 ±1.5，见 spec「Further Notes」）。
-// 键 = 习性组名。
-var fishPullGroupK0 = map[string]float64{
-	"marine_gadid":    19.7, // 海水鳕科
-	"herb_carp":       18.2, // 大型草食鲤科
-	"migratory_roach": 18.8, // 洄游速游鲤科
-	"sunfish":         20.4, // 小型凶猛太阳鱼科
-	"predator":        17.5, // 梭形掠食者
-	"carp_mid":        16.7, // 中型力量鲤科
-	"roach_run":       16.4, // 拟鲤族
-	"still_carp":      15.0, // 静水小型鲤科
-	"pond_carp":       13.7, // 小型池塘鲤科
-	"weak_silver":     13.0, // 小型银色弱鱼
-	"salmonid":        18.0, // 鲑科（纯估计）
-	"sturgeon":        17.0, // 鲟科（纯估计）
-	"catfish":         16.0, // 鲶科（纯估计）
-	"flatfish":        16.0, // 比目鱼（纯估计）
+// fishPullGroupK0 是未实测鱼种的习性组拉力参数（v2：组值按组内实测成员标定，
+// 海鱼类组继承恒 k（Slope=0），鲤科组继承成员自拟合斜率；纯估计组保持全局
+// 斜率先验 0.35。离散 k 证据见 fish-pull-k-table spec「v2 增补」。
+var fishPullGroupK0 = map[string]fishPullParam{
+	"marine_gadid":    {K0: 21.58, Slope: 0},    // 鳕形目（恒k锚 coalfish/atl_cod 21.58；组员无须鳕/蓝鳕/魣鳕/长尾鳕/白姑鱼）
+	"marine_pelagic":  {K0: 22.57, Slope: 0},    // 鲱鲭中上层（恒k锚 atl_herring 22.57；组员西鲱/沙丁/竹刀/带鱼/月鱼）
+	"marine_rock":     {K0: 17.66, Slope: 0},    // 礁岩底栖/鮋杜父/鳗鳃类（恒k锚 m_scorpius 17.66；鳗/七鳃鳗/蟹虾/pinagor 低置信归入）
+	"small_forage":    {K0: 18.64, Slope: 0},    // 小型饵料鱼（恒k锚 tiulka/shemaya_cha 18.64；刺鱼/鮈/鱥/泥鳅/胡瓜鱼）
+	"apex":            {K0: 25.53, Slope: 0},    // 鲨/剑鱼/金枪鱼顶级（纯推断取离散上界 25.53，无实测）
+	"sunfish":         {K0: 19.62, Slope: 0},    // 太阳鱼科（恒k锚 b_gill/pumps_sunfish 19.62）
+	"migratory_roach": {K0: 18.64, Slope: 0},    // 洄游速游拟鲤（恒k锚 taran 18.64）
+	"herb_carp":       {K0: 18.79, Slope: 0.23}, // 大型草食/滤食鲤科（变k锚 g_carp 斜率 0.23；鳙鲢/胭脂鱼/鲃）
+	"roach_run":       {K0: 16.36, Slope: 0.23}, // 拟鲤族速游（变k锚 c.roach 斜率 0.23）
+	"still_carp":      {K0: 15.05, Slope: 0.35}, // 静水鳊鲫（变k锚 crucian {15.05, 0.35}）
+	"carp_mid":        {K0: 16.50, Slope: -1},   // 中型力量鲤科（K0 锚 carp 16.50，斜率先验 0.35；锦鲤系/丁鱥/鼓鱼）
+	"pond_carp":       {K0: 13.84, Slope: 0.45}, // 小型池塘鲤（变k锚 c.carp {13.84, 0.45}）
+	"predator":        {K0: 17.30, Slope: -1},   // 梭形掠食者（K0 锚 n.pike 17.30，斜率先验 0.35）
+	"weak_silver":     {K0: 13.00, Slope: -1},   // 小型银色弱鱼/贝类/虾蛙（变k锚 s.bream {13.00, 0.35}；crawfish 无拉力数据按体型归入）
+	"salmonid":        {K0: 18.00, Slope: -1},   // 鲑科（纯估计 18.0，无新数据；crawfish/pinagor 已按习性移出，见 spec v2.1 修正）
+	"sturgeon":        {K0: 17.00, Slope: -1},   // 鲟科（纯估计 17.0）
+	"catfish":         {K0: 16.00, Slope: -1},   // 鲶科（纯估计 16.0）
+	"flatfish":        {K0: 16.00, Slope: -1},   // 比目鱼（纯估计 16.0）
 }
 
-// fishPullSpeciesGroup 把未实测但高频的鱼种映射到习性组；缺省走 fallback。
+// fishPullAlias 皮肤/变种鱼种 → 宿主实测种：变种与宿主同属性，直接继承
+// 宿主逐鱼种参数（避免走组表引入斜率偏差）。
+var fishPullAlias = map[string]string{
+	"carp_albino":   "carp",
+	"carp_red":      "carp",
+	"common_carp":   "carp",
+	"l_carp":        "carp",
+	"l_carp_albino": "carp",
+	"l_carp_ghost":  "carp",
+	"midori_g":      "carp",
+	"r_carp":        "carp",
+	"r_carp_albino": "carp",
+	"r_carp_ghost":  "carp",
+	"g_carp_albino": "g_carp",
+	"m_carp_albino": "m_carp",
+	"m_carp_ghost":  "m_carp",
+	"m_carp_red":    "m_carp",
+	"n_carp_albino": "n_carp",
+	"n_carp_ghost":  "n_carp",
+}
+
+// fishPullSpeciesGroup 未实测鱼种 → 习性组（v2 起全覆盖 static 库 249 种，
+// 组值见 fishPullGroupK0；皮肤变种走 fishPullAlias 不在此表）。
 var fishPullSpeciesGroup = map[string]string{
-	"karasekarp":    "still_carp",
-	"din_m_carp":    "carp_mid",
-	"din_n_carp":    "carp_mid",
-	"n_carp":        "carp_mid",
-	"kohaku":        "carp_mid",
-	"o_ogon":        "carp_mid",
-	"n_asagi":       "carp_mid",
-	"yotsushiro":    "carp_mid",
-	"hi_utsri":      "carp_mid",
-	"m_goshiki":     "carp_mid",
-	"tench":         "carp_mid",
-	"kw_tench":      "carp_mid",
-	"c_barbel":      "carp_mid",
-	"bream":         "still_carp",
-	"wa_bream":      "still_carp",
-	"s.orfe":        "roach_run",
-	"e.chub":        "roach_run",
-	"shemaya":       "roach_run",
-	"syb_roach":     "roach_run",
-	"vobla":         "roach_run",
-	"lm_b_bass":     "predator",
-	"sm_bass":       "predator",
-	"sp_bass":       "predator",
-	"wh_bass":       "predator",
-	"s_bass":        "predator",
-	"hs_bass":       "predator",
-	"bp_bass":       "sunfish",
-	"black_crappie": "sunfish",
-	"warm":          "sunfish",
-	"riv_rb_trout":  "salmonid",
-	"sevan_trout":   "salmonid",
-	"palia_lud":     "salmonid",
-	"malma":         "salmonid",
-	"gc_smelt":      "salmonid",
-	"taimen":        "salmonid",
-	"os_grayling":   "salmonid",
-	"coalfish":      "marine_gadid",
-	"pollachius":    "marine_gadid",
-	"menek":         "marine_gadid",
-	"p_sturgeon":    "sturgeon",
-	"sterlet":       "sturgeon",
-	"beluga":        "sturgeon",
-	"fhcatfish":     "catfish",
-	"ch_catfish":    "catfish",
-	"w_catfish":     "catfish",
-	"burbot":        "catfish",
-	"turbot":        "flatfish",
-	"sea_kambala":   "flatfish",
-	"lh_kambala":    "flatfish",
-	"asp":           "predator",
-	"ruffe":         "predator",
-	"ruffe_n":       "predator",
-	"zander":        "predator",
-	"g_shad":        "weak_silver",
-	"d_zubatka":     "predator",
-	"m_zubatka":     "predator",
+	"m_molva":             "marine_gadid",
+	"macrourus_b":         "marine_gadid",
+	"meagre":              "marine_gadid",
+	"merluza":             "marine_gadid",
+	"molva":               "marine_gadid",
+	"poutassou":           "marine_gadid",
+	"alfonsino":           "marine_pelagic",
+	"b_herring":           "marine_pelagic",
+	"b_scabbardfish":      "marine_pelagic",
+	"c_herring":           "marine_pelagic",
+	"centroloph_n":        "marine_pelagic",
+	"k_herring":           "marine_pelagic",
+	"lampris_g":           "marine_pelagic",
+	"s_saurus":            "marine_pelagic",
+	"sardina_p":           "marine_pelagic",
+	"ambl_h":              "marine_rock",
+	"ambl_r":              "marine_rock",
+	"bullhead_syb":        "marine_rock",
+	"c_lamprey":           "marine_rock",
+	"c_squid":             "marine_rock",
+	"chimaera":            "marine_rock",
+	"conger":              "marine_rock",
+	"ed_crab":             "marine_rock",
+	"eel":                 "marine_rock",
+	"fe_lamprey":          "marine_rock",
+	"himant_g":            "marine_rock",
+	"lophius_p":           "marine_rock",
+	"lycodes_e":           "marine_rock",
+	"lycodes_s":           "marine_rock",
+	"polyprion":           "marine_rock",
+	"red_fish":            "marine_rock",
+	"rk_crab":             "marine_rock",
+	"sebastes_m":          "marine_rock",
+	"sebastes_n":          "marine_rock",
+	"u_lamprey":           "marine_rock",
+	"zoarces_v":           "marine_rock",
+	"a_smelt":             "small_forage",
+	"barb_toni":           "small_forage",
+	"e_smelt":             "small_forage",
+	"golyan":              "small_forage",
+	"gudgeon":             "small_forage",
+	"l_minnow":            "small_forage",
+	"shemaya":             "small_forage",
+	"stickleback_ninesp":  "small_forage",
+	"stickleback_ss":      "small_forage",
+	"stickleback_threesp": "small_forage",
+	"syb_gudgeon":         "small_forage",
+	"trib_h":              "small_forage",
+	"vjun":                "small_forage",
+	"c_anguineus":         "apex",
+	"cetorhinus_m":        "apex",
+	"katran":              "apex",
+	"lamna_n":             "apex",
+	"somniosus_m":         "apex",
+	"thynnus_t":           "apex",
+	"x_gladius":           "apex",
+	"black_crappie":       "sunfish",
+	"bp_bass":             "sunfish",
+	"resfish":             "sunfish",
+	"warm":                "sunfish",
+	"white_crappie":       "sunfish",
+	"alb_barbel":          "herb_carp",
+	"bh_carp":             "herb_carp",
+	"bl_buffalo":          "herb_carp",
+	"buffalo":             "herb_carp",
+	"c_nase":              "herb_carp",
+	"chukuchan":           "herb_carp",
+	"s_carp":              "herb_carp",
+	"sh_barbel":           "herb_carp",
+	"dace":                "roach_run",
+	"e.chub":              "roach_run",
+	"kutum":               "roach_run",
+	"s.orfe":              "roach_run",
+	"sabrefish":           "roach_run",
+	"syb_elets":           "roach_run",
+	"syb_roach":           "roach_run",
+	"v_bream":             "roach_run",
+	"vobla":               "roach_run",
+	"vyrezub":             "roach_run",
+	"b_bream":             "still_carp",
+	"bream":               "still_carp",
+	"e_bream":             "still_carp",
+	"karasekarp":          "still_carp",
+	"wa_bream":            "still_carp",
+	"c_barbel":            "carp_mid",
+	"din_m_carp":          "carp_mid",
+	"din_n_carp":          "carp_mid",
+	"fwdrum":              "carp_mid",
+	"g_tench":             "carp_mid",
+	"hi_utsri":            "carp_mid",
+	"kohaku":              "carp_mid",
+	"m_goshiki":           "carp_mid",
+	"n_asagi":             "carp_mid",
+	"o_ogon":              "carp_mid",
+	"tench":               "carp_mid",
+	"yotsushiro":          "carp_mid",
+	"a.sleeper":           "predator",
+	"agar":                "predator",
+	"asp":                 "predator",
+	"barsch":              "predator",
+	"chan_m":              "predator",
+	"d_zubatka":           "predator",
+	"e.pikeperch":         "predator",
+	"hs_bass":             "predator",
+	"lm_b_bass":           "predator",
+	"m_zubatka":           "predator",
+	"p_zubatka":           "predator",
+	"ruffe":               "predator",
+	"ruffe_n":             "predator",
+	"s_bass":              "predator",
+	"sgar":                "predator",
+	"sm_bass":             "predator",
+	"sp_bass":             "predator",
+	"walleye":             "predator",
+	"wh_bass":             "predator",
+	"zander":              "predator",
+	"chlamys_isl":         "weak_silver",
+	"dreissena":           "weak_silver",
+	"freshwater_mussel":   "weak_silver",
+	"frog":                "weak_silver",
+	"g_shad":              "weak_silver",
+	"mytilus_ed":          "weak_silver",
+	"ostrea_ed":           "weak_silver",
+	"s_freaks":            "weak_silver",
+	"a_char":              "salmonid",
+	"a_grayling":          "salmonid",
+	"a_omul":              "salmonid",
+	"a_salmon":            "salmonid",
+	"b_omul":              "salmonid",
+	"bs_salmon":           "salmonid",
+	"chartus_kuoriius":    "salmonid",
+	"chavycha":            "salmonid",
+	"chir":                "salmonid",
+	"crawfish":            "weak_silver",
+	"dr_char":             "salmonid",
+	"gc_smelt":            "salmonid",
+	"golets_lev":          "salmonid",
+	"gorbusha":            "salmonid",
+	"k_salmon":            "salmonid",
+	"keta":                "salmonid",
+	"kijuch":              "salmonid",
+	"kunja":               "salmonid",
+	"l_salmon":            "salmonid",
+	"lenok_o":             "salmonid",
+	"lenok_t":             "salmonid",
+	"malma":               "salmonid",
+	"mikija":              "salmonid",
+	"muksun":              "salmonid",
+	"neiva":               "salmonid",
+	"nelma":               "salmonid",
+	"nerka":               "salmonid",
+	"onkor_m":             "salmonid",
+	"onkor_mg":            "salmonid",
+	"os_grayling":         "salmonid",
+	"palia_kr":            "salmonid",
+	"palia_lud":           "salmonid",
+	"peled":               "salmonid",
+	"pinagor":             "marine_rock",
+	"ripus":               "salmonid",
+	"riv_brown_trout":     "salmonid",
+	"riv_rb_trout":        "salmonid",
+	"salvel_l":            "salmonid",
+	"sevan_trout":         "salmonid",
+	"sig":                 "salmonid",
+	"sig_black":           "salmonid",
+	"sig_kuor":            "salmonid",
+	"sig_ludoga":          "salmonid",
+	"sig_o_l":             "salmonid",
+	"sig_ostr":            "salmonid",
+	"sig_p":               "salmonid",
+	"sig_valaam":          "salmonid",
+	"sig_vouksa":          "salmonid",
+	"sv_sig":              "salmonid",
+	"syb_vendace":         "salmonid",
+	"taimen":              "salmonid",
+	"tugun":               "salmonid",
+	"valyok":              "salmonid",
+	"vendace":             "salmonid",
+	"wfish":               "salmonid",
+	"zs_grayling":         "salmonid",
+	"beluga":              "sturgeon",
+	"ch_beluga":           "sturgeon",
+	"kaluga":              "sturgeon",
+	"l_sturgeon":          "sturgeon",
+	"osetr_balt":          "sturgeon",
+	"osetr_ship":          "sturgeon",
+	"p_sturgeon":          "sturgeon",
+	"r_sturgeon":          "sturgeon",
+	"st_sturgeon":         "sturgeon",
+	"sterlet":             "sturgeon",
+	"syb_sterlet":         "sturgeon",
+	"zs_sturgeon":         "sturgeon",
+	"a_catfish":           "catfish",
+	"burbot":              "catfish",
+	"ch_catfish":          "catfish",
+	"fhcatfish":           "catfish",
+	"w_catfish":           "catfish",
+	"w_catfish_a":         "catfish",
+	"halibut_b":           "flatfish",
+	"halibut_w":           "flatfish",
+	"hippoglos_p":         "flatfish",
+	"lh_kambala":          "flatfish",
+	"sea_kambala":         "flatfish",
+	"turbot":              "flatfish",
 }
 
-// fishPullK0For 返回鱼种拉力基值：实测种 → 习性组 → fallback（tunable 可覆盖）。
-func (s *Server) fishPullK0For(species string) float64 {
-	if k, ok := fishPullK0[species]; ok {
-		return k
+// fishPullGroupFightKey 是 f8 习性组 → f5/f6/f21 组键的跨层映射（PR #516
+// 复审 P2-1：组表声明的习性必须驱动全部搏斗层，f8 归组而 f5/f6/f21 落
+// default 属跨层漂移）。海组映射为 "marine" 且只在海图判定为真时生效——
+// 淡水图的 marine_rock 成员（鳗/七鳃鳗/杜父，见 loc_fish）回落词表，
+// 避免淡水鳗鱼吃 8.445/g 的海水耐力。
+var fishPullGroupFightKey = map[string]string{
+	"marine_gadid":    "marine",
+	"marine_pelagic":  "marine",
+	"marine_rock":     "marine",
+	"flatfish":        "marine",
+	"apex":            "apex",
+	"small_forage":    "small",
+	"sunfish":         "small",
+	"migratory_roach": "small",
+	"roach_run":       "small",
+	"weak_silver":     "small",
+	"herb_carp":       "cyprinid",
+	"still_carp":      "cyprinid",
+	"carp_mid":        "cyprinid",
+	"pond_carp":       "cyprinid",
+	"predator":        "ambush",
+	"salmonid":        "salmonid",
+	"sturgeon":        "sturgeon",
+	"catfish":         "catfish",
+}
+
+// fishPullAliasHost 皮肤变种 → 宿主实测种（一层别名，无环）；非别名原样
+// 返回。f5/f6 显式表与组键判定经此继承宿主习性，与 f8 的 fishPullParamFor
+// 同源（PR #516 复审 P2-2：别名不得只继承 f8）。
+func fishPullAliasHost(species string) string {
+	if host, ok := fishPullAlias[strings.ToLower(strings.TrimSpace(species))]; ok {
+		return host
+	}
+	return species
+}
+
+// fightGroupKeyFromPullGroup 组表直查：f8 组表声明的习性组决定 f5/f6/f21
+// 组键，词表只兜底未入组鱼种。海组（映射值 marine）交回调用方按海图判定，
+// 返回 ok=false；淡水判定下的海组成员维持词表既有口径。
+func fightGroupKeyFromPullGroup(species string) (string, bool) {
+	g, ok := fishPullSpeciesGroup[fishPullAliasHost(species)]
+	if !ok {
+		return "", false
+	}
+	key, ok := fishPullGroupFightKey[g]
+	if !ok || key == "marine" {
+		return "", false
+	}
+	return key, true
+}
+
+// fishPullParamFor 返回鱼种拉力参数：皮肤变种（别名）→ 实测种 → 习性组 →
+// fallback。组表 Slope 按组内实测成员标定（海鱼类 0、鲤科类 0.23~0.45），
+// 先验组 Slope=-1 回落全局 fishPullLnSlope；fallback Slope=-1 同。
+func (s *Server) fishPullParamFor(species string) fishPullParam {
+	if host := fishPullAliasHost(species); host != species {
+		return s.fishPullParamFor(host) // 皮肤变种继承宿主实测参数（一层别名，无环）
+	}
+	if p, ok := fishPullK0[species]; ok {
+		return p
 	}
 	if g, ok := fishPullSpeciesGroup[species]; ok {
-		if k, ok := fishPullGroupK0[g]; ok {
-			return k
+		if p, ok := fishPullGroupK0[g]; ok {
+			return p
 		}
 	}
-	return s.tunableF("fish_pull_fallback_k", 17.5)
+	return fishPullParam{K0: s.tunableF("fish_pull_fallback_k", 17.5), Slope: -1}
+}
+
+// fishPullK0For 返回鱼种拉力基值（K0）；保留给日志与显示层使用。
+func (s *Server) fishPullK0For(species string) float64 {
+	return s.fishPullParamFor(species).K0
 }
 
 // fishFightPullFor 计算 obj27#8 拉力（牛）：
@@ -823,13 +1089,22 @@ func (s *Server) fishFightPullFor(f *RolledFish) float64 {
 	}
 	if pull <= 0 {
 		wKg := math.Max(0.01, float64(f.WeightG)/1000)
-		slope := s.tunableF("fish_pull_ln_slope", fishPullLnSlope)
-		pull = wKg * (s.fishPullK0For(f.Species) + slope*math.Log(wKg))
+		p := s.fishPullParamFor(f.Species)
+		slope := p.Slope
+		if slope < 0 {
+			slope = s.tunableF("fish_pull_ln_slope", fishPullLnSlope)
+		}
+		pull = wKg * (p.K0 + slope*math.Log(wKg))
 	}
 	if k := s.tunableF("fight_power_scale", 1.0); k > 0 && k != 1.0 {
-		pull = math.Max(0.5, math.Round(pull*k*10000)/10000)
+		// 与主路径同为 0.05N 浮点保护下限（PR #516 复审 P2-3）：官方 10g
+		// 棱鲱 f8=0.186N，scale=0.5 应得 0.093N，0.5N 旧下限会把小鱼抬回。
+		pull = math.Max(0.05, math.Round(pull*k*10000)/10000)
 	}
-	return math.Max(0.5, math.Round(pull*10000)/10000)
+	// 官方无 0.5N 下限：2026-11-16 抓包 10g 棱鲱 f8=0.186N、24g 欧鲌 0.424N。
+	// 下限只防浮点归零（最小 wKg 0.01kg×K0≈0.19N，实际到不了），legacy 分支
+	// 的旧 0.5N 下限保持不动。
+	return math.Max(0.05, math.Round(pull*10000)/10000)
 }
 
 // fishFightPullKgfFor 把 27.f8 的鱼拉力（牛）换算成公斤力，供与渔轮泄力、锁轮承力
@@ -2004,22 +2279,30 @@ func (s *Server) fishMarineGroupHit(species string) bool {
 // 1.18），与搏鱼脱钩方案 §五B「组键也回退 CurvePool」同口径；
 // apex/catfish/sturgeon 等专属词表携带刻意的家族特化，不覆盖。
 func fishCurveArchetypeFor(species string, marine bool) fishFightArchetype {
-	arch := fishFightArchetypeFor(species)
 	if !marine {
-		return arch
+		// 淡水判定：f8 组表直查优先（与 fishFightGroupKeyFor 同源），
+		// 词表兜底未入组鱼种。
+		if key, ok := fightGroupKeyFromPullGroup(species); ok {
+			return fishFightArchetypes[key]
+		}
+		return fishFightArchetypeFor(species)
 	}
+	arch := fishFightArchetypeFor(species)
 	if arch == fishFightArchetypes["default"] || arch == fishFightArchetypes["small"] {
 		return fishFightArchetypes["marine"]
 	}
 	return arch
 }
 
-// fishFightGroupKeyFor 把鱼种映射到习性组。海图归属优先；其余按
-// fishFightArchetypeFor 的词表分组。未知鱼种落 default 中性组，不再落
-// 小鲫鱼 fallback。
+// fishFightGroupKeyFor 把鱼种映射到习性组。海图归属优先；其余先查 f8 组表
+// 直查（PR #516 复审 P2-1：组表声明习性驱动全层），词表兜底未入组鱼种。
+// 未知鱼种落 default 中性组，不再落小鲫鱼 fallback。
 func fishFightGroupKeyFor(species string, marine bool) string {
 	if marine {
 		return "marine"
+	}
+	if key, ok := fightGroupKeyFromPullGroup(species); ok {
+		return key
 	}
 	switch fishFightArchetypeFor(species) {
 	case fishFightArchetypes["marine"]:
@@ -2136,7 +2419,7 @@ func (s *Server) fishStaminaForProfile(f *RolledFish, profile fishFightProfile) 
 		// 官方 f8/f5 都没有 archetype 形状，直接 rate×体重，不再乘 StaminaScale；
 		// 官方种内散布 ±13%~57%（g_carp 最大），均值表把个体误差压回散布带。
 		// 未实测种维持旧口径（2.388/g × archetype 耐力倍率）。
-		if rate, ok := fishStaminaRatePerGram[f.Species]; ok {
+		if rate, ok := fishStaminaRatePerGram[fishPullAliasHost(f.Species)]; ok {
 			stamina = rate * float64(f.WeightG)
 		} else if s.fishFightGroupFallback() {
 			if rate := fishStaminaRateGroupFor(f.Species, s.fishMarineGroupHit(f.Species)); rate > 0 {
@@ -2156,24 +2439,42 @@ func (s *Server) fishStaminaForProfile(f *RolledFish, profile fishFightProfile) 
 	return stamina
 }
 
-// fishStaminaRatePerGram 是官方 14/14 抓包实测鱼种的 f5 每克均值（2026-11-11，
-// 31 样本；见 specs/changes/fish-official-data-tables/spec.md）。海钓两科的
-// 官方值远高于旧版常数 2.388（merlang 10.5 / piksha 6.4）。
+// fishStaminaRatePerGram 是官方 14/14 抓包实测鱼种的 f5 每克均值（2026-11-11
+// 31 样本 + 2026-11-16/17 断电抢救包 53 样本；见
+// specs/changes/fish-official-data-tables/spec.md 与 fish-pull-k-table v2）。
+// 海钓科目的官方值远高于旧版常数 2.388（merlang 10.5 / 鲭鲱类 11.7~19.3）。
+// 每克均值本身随体重下行（crucian 193g 2.79 → 611g 1.78），此处为样本均值口径。
 var fishStaminaRatePerGram = map[string]float64{
-	"merlang":    10.50,
-	"piksha":     6.39,
-	"s.bream":    5.87,
-	"b_gill":     4.07,
-	"taran":      3.55,
-	"din_l_carp": 2.77,
-	"n.pike":     2.76,
-	"perch":      2.75,
-	"c.carp":     2.52,
-	"c.roach":    2.51,
-	"g_carp":     2.44,
-	"crucian":    2.29,
-	"carp":       2.10,
-	"b_carp":     2.09,
+	"cha_herring":   19.29,
+	"makrel":        17.84,
+	"atl_herring":   11.71,
+	"shemaya_cha":   8.84,
+	"coalfish":      8.98,
+	"merlang":       10.50,
+	"pollachius":    7.52,
+	"menek":         7.37,
+	"atl_cod":       6.79,
+	"piksha":        6.39,
+	"s.bream":       5.87,
+	"pumps_sunfish": 4.75,
+	"b_gill":        4.07,
+	"m_scorpius":    3.98,
+	"rudd":          3.47,
+	"taran":         3.55,
+	"tiulka":        2.92,
+	"din_l_carp":    2.77,
+	"c_bleak":       2.84,
+	"n.pike":        2.76,
+	"perch":         2.69,
+	"c.carp":        2.78,
+	"c.roach":       2.51,
+	"g_carp":        2.44,
+	"crucian":       2.29,
+	"carp_ghost":    2.32,
+	"carp":          2.10,
+	"b_carp":        2.09,
+	"kw_tench":      2.08,
+	"n_carp":        1.98,
 }
 
 // fishF6Table 是官方实测鱼种的 f6 抗疲劳系数（0.05 步进量化值）。语义：
@@ -2267,8 +2568,8 @@ func (s *Server) fishF6BaseFor(f *RolledFish) float64 {
 	if s.fightLegacyModel() && !s.fightOfficialStrength() {
 		return s.fishInitialStaminaRatio()
 	}
-	if v, ok := fishF6Table[f.Species]; ok {
-		if step, ok := fishF6Step[f.Species]; ok && f.WeightG >= step.AboveG {
+	if v, ok := fishF6Table[fishPullAliasHost(f.Species)]; ok {
+		if step, ok := fishF6Step[fishPullAliasHost(f.Species)]; ok && f.WeightG >= step.AboveG {
 			return step.F6
 		}
 		return v

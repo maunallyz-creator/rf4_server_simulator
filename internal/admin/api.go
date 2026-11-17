@@ -47,6 +47,9 @@ type Server struct {
 
 	// 发布包根目录的「发布说明.md」；为空时按工作目录 / 可执行文件位置查找。
 	releaseNotesPath string
+
+	// 可选图标包按 Server 实例缓存；缺包或坏包保持 404 降级。
+	icons iconArchive
 }
 
 type plog struct{ l logger }
@@ -125,6 +128,8 @@ func NewServer(cfg config.Admin, db *store.DB, log logger, webFS fs.FS) *Server 
 	// 纸地图贴图运行时加载（素材不入仓库，见 paper_maps.go）：
 	// 先于 SPA FileServer 注册，web/ 内已不再内嵌 maps 目录。
 	mux.Handle("GET /maps/", http.HandlerFunc(s.handleMapTextures))
+	// 物品与鱼种图标同理由 ref/ 运行时加载（见 item_icons.go）。
+	mux.Handle("GET /icons/", http.HandlerFunc(s.handleIcons))
 	if webFS != nil {
 		mux.Handle("/", http.FileServer(http.FS(webFS)))
 	}

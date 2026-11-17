@@ -45,9 +45,10 @@ func TestFish27UsesVerifiedFightFields(t *testing.T) {
 	if got := f32At(tree, 6); math.Abs(got-0.50) > 1e-6 {
 		t.Fatalf("c.roach f6 初始体力=%f，期望官方量化值 0.50", got)
 	}
-	// c.roach K0=16.4：f8 = 0.186kg × (16.4 + 0.35·ln(0.186)) = 2.9404N。
+	// c.roach K0=16.36/slope=0.23（v2 表，3 样本自拟合）：
+	// f8 = 0.186kg × (16.36 + 0.23·ln(0.186)) = 2.9710N。
 	// 官方锚点：150g→2.39N、680g→11.07N、713g→11.61N（同公式 ±2%）。
-	wantPull := 0.186 * (16.4 + fishPullLnSlope*math.Log(0.186))
+	wantPull := 0.186 * (16.36 + 0.23*math.Log(0.186))
 	if got := f32At(tree, 8); math.Abs(got-wantPull) > 0.0001 {
 		t.Fatalf("c.roach f8 拉力=%f，期望%f", got, wantPull)
 	}

@@ -154,16 +154,16 @@ func castCalibrationDistance(payloadG float64, spoolSize int64) float64 {
 
 func TestCastCalibrationBands(t *testing.T) {
 	// 标称随竿 Test 分档（2026-11-17，specs/changes/cast-rod-test-scaling）
-	// 后的区间：本 helper 竿 Test 上限 30g，标称 23.06×(30/4)^0.42 ≈ 53.9；
-	// 8g 得 33.68（6000 大杯）/ 39.30（2000 小杯），10g 再高约 1%。
+	// 后的区间：本 helper 竿 Test 上限 30g，标称 23.06×(30/4)^0.464；
+	// 8g 得 37.55（6000 大杯）/ 43.81（2000 小杯），10g 再高约 1%。
 	for _, payload := range []float64{8, 10} {
 		largeSpool := castCalibrationDistance(payload, 5) // 6000
 		smallSpool := castCalibrationDistance(payload, 2) // 2000
-		if largeSpool < 33.4 || largeSpool > 34.4 {
-			t.Fatalf("6000线杯 %.0fg 距离=%0.2f，期望33.4～34.4米区间", payload, largeSpool)
+		if largeSpool < 37.3 || largeSpool > 38.2 {
+			t.Fatalf("6000线杯 %.0fg 距离=%0.2f，期望37.3～38.2米区间", payload, largeSpool)
 		}
-		if smallSpool < 39.0 || smallSpool > 40.0 {
-			t.Fatalf("2000线杯 %.0fg 距离=%0.2f，期望39.0～40.0米区间", payload, smallSpool)
+		if smallSpool < 43.5 || smallSpool > 44.5 {
+			t.Fatalf("2000线杯 %.0fg 距离=%0.2f，期望43.5～44.5米区间", payload, smallSpool)
 		}
 		if smallSpool <= largeSpool+5 {
 			t.Fatalf("小线杯应比6000线杯远至少5米: 小杯=%0.2f 大杯=%0.2f", smallSpool, largeSpool)
@@ -190,7 +190,7 @@ func TestCastPlayerStateFactorZeroStateUsesFloor(t *testing.T) {
 }
 
 // 标称随竿 Test 分档（2026-11-17）后，4.2m/Test30 的高阶路亚装配
-// + 满熟练 + 10% 技能上限约 56.8m。
+// + 满熟练 + 10% 技能上限约 63.3m。
 func TestCastHighEndGearCeilingAfterRodTestScaling(t *testing.T) {
 	d, _ := calculateCastDistance(CastDistanceContext{
 		RigType: 5, CastAction: 1, CastPower: 1,
@@ -201,16 +201,17 @@ func TestCastHighEndGearCeilingAfterRodTestScaling(t *testing.T) {
 		PlayerPrimary: defaultPlayerConditionPrimary, PlayerSecondary: defaultPlayerConditionSecondary,
 		SkillMastery: 100, SkillCastPct: 10,
 	})
-	if d < 56.4 || d > 57.2 {
-		t.Fatalf("高阶装备上限应落在 ~56.8m，实得%0.2f", d)
+	if d < 63.0 || d > 63.7 {
+		t.Fatalf("高阶装备上限应落在 ~63.3m，实得%0.2f", d)
 	}
 }
 
 // TestCastFreshwaterLureOfficialAnchorBand 复现实抓 2026-11-13 21:28 的 UL
 // 配置（1.8m 枪柄 + 水滴轮 + 3.33g 载荷，Test 1-8g，0.28 编织线，浅杯 8）
-// 与满级投距技能（708×7 + 717×5 = +60%）、熟练度 95。Test 上限 8g 档标称
-// 23.06×(8/4)^0.42 ≈ 30.2，乘实抓因子链 0.9085 ≈ 27.45m——与官服
-// 「UL 满技能未改装约 27m」锚点一致。
+// 与满级投距技能（708×7 + 717×5 = +60%）、熟练度 95。Test 上限 8g 是锚点
+// 档 4g 的两倍，按 23.06×(8/4)^0.464 得标称 31.8，乘实抓因子链 0.9085
+// ≈ 28.9m。官服 UL 锚点本身是 Test 4g 档的 27.0m（见 TestCastOfficialULAnchor），
+// 这条只锁「同一因子链下 Test 8g 档的落点」，仍在维护者提到的 20~30m 区间内。
 func TestCastFreshwaterLureOfficialAnchorBand(t *testing.T) {
 	d, factors := calculateCastDistance(CastDistanceContext{
 		RigType: 5, CastAction: 1, CastPower: 1,
@@ -222,8 +223,8 @@ func TestCastFreshwaterLureOfficialAnchorBand(t *testing.T) {
 		PlayerPrimary:      defaultPlayerConditionPrimary,
 		SkillMastery:       95, SkillCastPct: 60,
 	})
-	if math.IsNaN(d) || d < 27.6 || d > 28.1 {
-		t.Fatalf("Test8 档 UL 配置应落在 ~27.82m（官服 UL 锚点 27m），实得 %.2f factors=%+v",
+	if math.IsNaN(d) || d < 28.6 || d > 29.2 {
+		t.Fatalf("Test8 档 UL 配置应落在 ~28.9m（官服 UL 锚点见 Test 4g 档），实得 %.2f factors=%+v",
 			d, factors)
 	}
 }
@@ -248,9 +249,45 @@ func TestCastOfficialULAnchor(t *testing.T) {
 	}
 }
 
-// TestCastOfficialMHAnchor 锁定中重装路亚锚点：2.7m/Test 15-49g + 63g 载荷
-// + 6000 线杯，满熟练满技能下封顶约 50m（玩家口径「49g 竿封顶 50m」）。
-func TestCastOfficialMHAnchor(t *testing.T) {
+// TestCastOfficialHeavyLureAnchor 锁定官服顶配重装路亚锚点，数据来源是
+// 维护者提供的官服实抛录像（YouTube WabYk6lPI7c，2026-03-21）：画面 HUD
+// 左下角稳定显示 69.3M/240M，即落点距离 69.3m。配置逐项来自同一录像的
+// 装备界面叠加层与静态库 item_def：
+//
+//	竿  Ultima S-M100HH（spin_10158_M100HH，Test 15-70g，3.0m）
+//	轮  Reef Turion SW 8000（spin_5271，线杯档 6）
+//	线  60kg 编织主线（braid_15765 等，直径 0.50mm，材质 3）
+//	饵  22g 拟饵
+//	技能 满熟练 100 + 满投距技能 +60%
+//
+// 这是继 UL 27.0m 之后第二条官服锚点，指数由两者共同反解，缺一会让曲线
+// 在重装端重新漂移。
+func TestCastOfficialHeavyLureAnchor(t *testing.T) {
+	d, factors := calculateCastDistance(CastDistanceContext{
+		RigType: 7, CastAction: 1, CastPower: 1,
+		RodLengthM: 3.0, RodAction: 2, RodStiffness: 2,
+		RodTestMinG: 15, RodTestMaxG: 70, PayloadWeightG: 22,
+		ReelEfficiency: 0.95, ReelType: 1, SpoolSize: 6, SpoolFill: 1,
+		LineDiameterMM: 0.50, LineLengthM: 300, LineStretch: 0.01, LineMaterial: 3,
+		LineRunningWeightG: 0.20,
+		PlayerPrimary:      defaultPlayerConditionPrimary,
+		PlayerSecondary:    defaultPlayerConditionSecondary,
+		SkillMastery:       100, SkillCastPct: 60,
+	})
+	if d < 69.0 || d > 69.6 {
+		t.Fatalf("官服顶配重装锚点应落在 69.3m，实得 %.2f factors=%+v", d, factors)
+	}
+}
+
+// TestCastMHAnchorRegression 锁定中重装档的回归基线：2.7m/Test 15-49g + 63g
+// 载荷 + 6000 线杯，满熟练满技能下约 57.3m。
+//
+// 注意：这个 50m **不是官服实测锚点**。它来自早期对维护者一句「49g 杆子封顶
+// 50」的误读——那句说的是竿的 Test 上限（该竿 Test 15-49g，上限约 50g），
+// 不是抛投距离。该档的官服实测值至今没有取得，因此本断言只作为指数曲线的
+// 内部回归基线，防止后续改动意外改变这一档的落点；补齐官服实测后，需要用
+// 真实锚点重新反解 castNominalTestExp，并同步调整本断言。
+func TestCastMHAnchorRegression(t *testing.T) {
 	d, _ := calculateCastDistance(CastDistanceContext{
 		RigType: 7, CastAction: 1, CastPower: 1,
 		RodLengthM: 2.7, RodAction: 2, RodStiffness: 2,
@@ -262,8 +299,8 @@ func TestCastOfficialMHAnchor(t *testing.T) {
 		PlayerSecondary:    defaultPlayerConditionSecondary,
 		SkillMastery:       100, SkillCastPct: 60,
 	})
-	if d < 49.9 || d > 50.7 {
-		t.Fatalf("中重装路亚锚点应落在 50m，实得 %.2f", d)
+	if d < 56.9 || d > 57.7 {
+		t.Fatalf("中重装档回归基线应落在 57.3m（非官服锚点，见函数注释），实得 %.2f", d)
 	}
 }
 
