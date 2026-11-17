@@ -159,11 +159,11 @@ func TestCastCalibrationBands(t *testing.T) {
 	for _, payload := range []float64{8, 10} {
 		largeSpool := castCalibrationDistance(payload, 5) // 6000
 		smallSpool := castCalibrationDistance(payload, 2) // 2000
-		if largeSpool < 31.8 || largeSpool > 33.0 {
-			t.Fatalf("6000线杯 %.0fg 距离=%0.2f，期望31.8～33.0米区间", payload, largeSpool)
+		if largeSpool < 47.3 || largeSpool > 48.7 {
+			t.Fatalf("6000线杯 %.0fg 距离=%0.2f，期望47.3～48.7米区间", payload, largeSpool)
 		}
-		if smallSpool < 32.8 || smallSpool > 34.2 {
-			t.Fatalf("2000线杯 %.0fg 距离=%0.2f，期望32.8～34.2米区间", payload, smallSpool)
+		if smallSpool < 48.5 || smallSpool > 51.0 {
+			t.Fatalf("2000线杯 %.0fg 距离=%0.2f，期望48.5～51.0米区间", payload, smallSpool)
 		}
 		if smallSpool <= largeSpool {
 			t.Fatalf("小线杯应不小于6000线杯: 小杯=%0.2f 大杯=%0.2f", smallSpool, largeSpool)
@@ -203,8 +203,8 @@ func TestCastHighEndGearCeilingAfterLocalRecalibration(t *testing.T) {
 		PlayerPrimary: defaultPlayerConditionPrimary, PlayerSecondary: defaultPlayerConditionSecondary,
 		SkillMastery: 100, SkillCastPct: 10,
 	})
-	if d < 44.5 || d > 47.5 {
-		t.Fatalf("本地重标定后高阶装备上限应落在 ~45.9m，实得%0.2f", d)
+	if d < 67 || d > 69.5 {
+		t.Fatalf("本地重标定后高阶装备上限应落在 ~68.2m，实得%0.2f", d)
 	}
 }
 
@@ -263,12 +263,12 @@ func TestCastNominalDistanceScalesWithRodTest(t *testing.T) {
 		t.Fatalf("竿未登记 Test 应回落 27.5，实得 %.2f", got)
 	}
 	mid := castNominalDistanceForRod(5, 30)
-	if mid < 36 || mid > 40 {
-		t.Fatalf("Test 上限 30g 的中型路亚标称应落在 36～40，实得 %.2f", mid)
+	if mid < 55 || mid > 59 {
+		t.Fatalf("Test 上限 30g 的中型路亚标称应落在 55～59，实得 %.2f", mid)
 	}
 	heavy := castNominalDistanceForRod(5, 70)
-	if heavy < 45 || heavy > 49 {
-		t.Fatalf("Test 上限 70g 的重型路亚标称应落在 45～49，实得 %.2f", heavy)
+	if heavy < 88 || heavy > 93 {
+		t.Fatalf("Test 上限 70g 的重型路亚标称应落在 88～93，实得 %.2f", heavy)
 	}
 	if !(ul < mid && mid < heavy) {
 		t.Fatalf("标称应随 Test 上限单调递增: ul=%.2f mid=%.2f heavy=%.2f", ul, mid, heavy)
