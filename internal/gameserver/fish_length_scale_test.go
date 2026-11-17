@@ -16,37 +16,41 @@ type lengthAnchor struct {
 // 已有官方标定曲线和未列入校准表的鱼种必须保持原值。
 func TestCalibratedLengthKP(t *testing.T) {
 	pikeK, pikeP := calibratedLengthKP("n.pike", defaultSpeciesLengthK, defaultSpeciesLengthP)
-	if math.Abs(pikeK-0.065519) > 1e-9 || math.Abs(pikeP-defaultSpeciesLengthP) > 1e-12 {
+	if math.Abs(pikeK-0.01841487) > 1e-9 || math.Abs(pikeP-0.43512987) > 1e-9 {
 		t.Fatalf("n.pike 未应用校准: k=%v p=%v", pikeK, pikeP)
 	}
 	carpK, carpP := calibratedLengthKP("carp", defaultSpeciesLengthK, defaultSpeciesLengthP)
-	if math.Abs(carpK-0.044208) > 1e-9 || math.Abs(carpP-defaultSpeciesLengthP) > 1e-12 {
+	if math.Abs(carpK-0.01599282) > 1e-9 || math.Abs(carpP-0.42160812) > 1e-9 {
 		t.Fatalf("carp 未应用校准: k=%v p=%v", carpK, carpP)
 	}
 	if pikeK <= carpK {
 		t.Fatalf("狗鱼系数应大于鲤: pike=%v carp=%v", pikeK, carpK)
 	}
-	if got := pikeK * math.Pow(5000, pikeP); got < 0.9 || got > 1.3 {
-		t.Fatalf("5kg 狗鱼长度=%.2fm 偏离现实区间", got)
+	if got := pikeK * math.Pow(5000, pikeP); got < 0.6 || got > 0.9 {
+		t.Fatalf("5kg 狗鱼长度=%.2fm 偏离官服拟合区间", got)
 	}
 	if got := carpK * math.Pow(5000, carpP); got < 0.55 || got > 0.85 {
 		t.Fatalf("5kg 鲤长度=%.2fm 偏离现实区间", got)
 	}
 
-	// 静态库里的非默认 k/p 是官方样本标定曲线，不能被现实体型校准覆盖。
-	official := []struct {
-		key string
-		k   float64
-		p   float64
-	}{
-		{"perch", 0.021948, 0.40868},
-		{"c.roach", 0.033498, 0.34010},
-		{"s.bream", 0.066818, 0.20866},
-		{"crucian", 0.035129, 1.0 / 3.0},
+	// 非默认 k/p 的处置分两层：s.bream 走 Linear 表保持原曲线；
+	// perch/c.roach/crucian 的旧标定已被 2026-11 官服抓包拟合取代（fishLengthOfficialKP 优先）。
+	if gotK, gotP := calibratedLengthKP("s.bream", 0.066818, 0.20866); gotK != 0.066818 || gotP != 0.20866 {
+		t.Fatalf("s.bream 官方曲线被覆盖: got=(%v,%v)", gotK, gotP)
 	}
-	for _, c := range official {
-		if gotK, gotP := calibratedLengthKP(c.key, c.k, c.p); gotK != c.k || gotP != c.p {
-			t.Fatalf("%s 官方曲线被覆盖: got=(%v,%v) want=(%v,%v)", c.key, gotK, gotP, c.k, c.p)
+	newFit := []struct {
+		key  string
+		k, p float64
+		oldK float64
+		oldP float64
+	}{
+		{"perch", 0.0288736, 0.37184146, 0.021948, 0.40868},
+		{"c.roach", 0.05712535, 0.25414856, 0.033498, 0.34010},
+		{"crucian", 0.03714672, 0.33119252, 0.035129, 1.0 / 3.0},
+	}
+	for _, c := range newFit {
+		if gotK, gotP := calibratedLengthKP(c.key, c.oldK, c.oldP); math.Abs(gotK-c.k) > 1e-9 || math.Abs(gotP-c.p) > 1e-9 {
+			t.Fatalf("%s 未应用官服拟合: got=(%v,%v) want=(%v,%v)", c.key, gotK, gotP, c.k, c.p)
 		}
 	}
 
@@ -386,8 +390,13 @@ func TestCalibratedLengthKP(t *testing.T) {
 	if gotK, gotP := calibratedLengthKP("not_a_fish", defaultSpeciesLengthK, defaultSpeciesLengthP); gotK != defaultSpeciesLengthK || gotP != defaultSpeciesLengthP {
 		t.Fatalf("未校准鱼种被改写: k=%v p=%v", gotK, gotP)
 	}
-	if gotK, gotP := calibratedLengthKP("crawfish", defaultSpeciesLengthK, defaultSpeciesLengthP); gotK != defaultSpeciesLengthK || gotP != defaultSpeciesLengthP {
-		t.Fatalf("非鱼类不应参与校准: k=%v p=%v", gotK, gotP)
+	// 非鱼类实测优先：crawfish 有官服单点（fishLengthSingleK），不落组锚。
+	{
+		gotK, gotP := calibratedLengthKP("crawfish", defaultSpeciesLengthK, defaultSpeciesLengthP)
+		want, ok := fishLengthSingleK["crawfish"]
+		if !ok || gotK != want.k || gotP != want.p {
+			t.Fatalf("crawfish 未落自己的单点锚: got=(%v,%v) want=(%v,%v)", gotK, gotP, want.k, want.p)
+		}
 	}
 }
 
@@ -403,11 +412,11 @@ func TestCachedSpeciesLengthKPAppliesCalibration(t *testing.T) {
 	}
 	ctx := context.Background()
 	for _, c := range []fishRollContext{{}, {cache: newFishingRollCache()}} {
-		if k, p := s.cachedSpeciesLengthKP(ctx, c, "carp"); math.Abs(k-0.044208) > 1e-9 || math.Abs(p-defaultSpeciesLengthP) > 1e-12 {
+		if k, p := s.cachedSpeciesLengthKP(ctx, c, "carp"); math.Abs(k-0.01599282) > 1e-9 || math.Abs(p-0.42160812) > 1e-9 {
 			t.Fatalf("cached carp 未应用校准: k=%v p=%v", k, p)
 		}
-		if k, p := s.cachedSpeciesLengthKP(ctx, c, "c.roach"); k != 0.033498 || p != 0.34010 {
-			t.Fatalf("cached 官曲线被覆盖: k=%v p=%v", k, p)
+		if k, p := s.cachedSpeciesLengthKP(ctx, c, "c.roach"); math.Abs(k-0.05712535) > 1e-9 || math.Abs(p-0.25414856) > 1e-9 {
+			t.Fatalf("cached c.roach 未应用官服拟合: k=%v p=%v", k, p)
 		}
 	}
 }
@@ -426,9 +435,9 @@ func TestFishLengthCommonSenseOutliers(t *testing.T) {
 		{"gc_smelt", 18000, 1.05, 1.30},
 		{"midori_g", 25000, 1.00, 1.40},
 		{"m_scorpius", 3000, 0.40, 0.60},
-		{"b_gill", 1200, 0.25, 0.35},
+		{"b_gill", 1200, 0.39, 0.47}, // 官服拟合（1200g≈0.43m）
 		{"fwdrum", 13500, 0.70, 0.90},
-		{"s_freaks", 30000, 0.90, 1.20},
+		{"s_freaks", 30000, 0.90, 1.25}, // 官服单点（30kg≈1.21m）
 		{"l_minnow", 100, 0.15, 0.22},
 		{"syb_vendace", 800, 0.30, 0.42},
 		{"b_omul", 6000, 0.50, 0.70},

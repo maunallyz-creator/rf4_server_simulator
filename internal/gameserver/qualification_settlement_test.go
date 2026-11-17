@@ -237,11 +237,12 @@ func TestQualification4402UsesSettledBaseXP(t *testing.T) {
 	if _, err := db.SQL.ExecContext(ctx, `UPDATE profile SET membership=1,membership_exp=? WHERE uid=?`, time.Now().Unix()+3600, uid); err != nil {
 		t.Fatal(err)
 	}
-	// 未特殊校准的 bream 基础经验为 0.4/g，会员加成翻倍。
+	// bream 官服锚：g3 c=1.4999（记录卡），g2 缺档=锚÷档乘 6.25=0.239984/g；会员加成翻倍。
+	// 完成线 qBaseXPAtLeast(7000) → 用 30kg 让 base 过线覆盖 complete 分支。
 	for _, tc := range []struct {
 		weight, base, total int64
 		complete            bool
-	}{{10000, 4000, 8000, false}, {17500, 7000, 14000, true}} {
+	}{{10000, 2399, 4798, false}, {30000, 7199, 14398, true}} {
 		fish := &RolledFish{FishGUID: newFishGUID(), Species: "bream", Grade: 2, WeightG: tc.weight, LocLevel: evLocBelaya}
 		ev := qualificationEvent{Kind: qevFishLanded, CatchGUID: fish.FishGUID, Species: fish.Species, WeightG: fish.WeightG, RigType: 1, RodType: 3}
 		result, err := srv.settleCatchOnceWithQualification(ctx, uid, fish, 1, &ev)

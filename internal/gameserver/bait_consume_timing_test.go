@@ -199,6 +199,11 @@ func TestMarineStrikeDoesNotConsumeMountedBait(t *testing.T) {
 	if _, err := db.EnsureProfile(t.Context(), uid); err != nil {
 		t.Fatal(err)
 	}
+	// 本测试只盯饵耗幂等：atl_cod g2 4200g 官服 XP=13229 足以连升触发升级礼物
+	// （6 级 = worm_01×30）并入饵堆，污染 4→3 断言，故关闭。
+	if err := db.TunableSet(t.Context(), "level_gifts_enabled", "0", "test"); err != nil {
+		t.Fatal(err)
+	}
 
 	rod, err := s.CreateItem(t.Context(), uid, "boatr_10222_SBH80_100", "backpack", 1)
 	if err != nil {
@@ -256,6 +261,11 @@ func TestExtraFishHookConfirmDoesNotConsumeBait(t *testing.T) {
 	s.sessions[sess.ID] = sess
 	uid := sess.Userid
 	if _, err := db.EnsureProfile(t.Context(), uid); err != nil {
+		t.Fatal(err)
+	}
+	// 本测试只盯饵耗幂等：atl_cod g2 4200g 官服 XP=13229 足以连升触发升级礼物
+	// （6 级 = worm_01×30）并入饵堆，污染 4→3 断言，故关闭。
+	if err := db.TunableSet(t.Context(), "level_gifts_enabled", "0", "test"); err != nil {
 		t.Fatal(err)
 	}
 

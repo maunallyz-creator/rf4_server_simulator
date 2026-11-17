@@ -413,14 +413,41 @@ func speciesLengthM(key string, k, p, wG float64) float64 {
 }
 
 // calibratedLengthKP 返回校准后的体长参数。
-// 只覆盖静态库仍使用默认 k/p 的鱼种；已有非默认参数代表官方样本标定曲线，必须原样保留。
+// 优先级：本种官服拟合表（n≥3）→ 本种官服单点/两点锚（含单点）→
+// 无本种实测时继承别名宿主的官服表 → 旧 KOverride/POverride（只覆盖静态库默认行；
+// 非默认行=官方标定曲线原样保留）→ 亲缘组锚（仅兜新旧表都不含且静态库为默认行的种）。
+// Linear 表种不入新表（见 fish_length_official.go 头注释），其标定链路原样保留。
 func calibratedLengthKP(key string, k, p float64) (float64, float64) {
-	v, ok := speciesLengthKOverride[key]
-	if !ok || math.Abs(k-defaultSpeciesLengthK) > 1e-9 || math.Abs(p-defaultSpeciesLengthP) > 1e-9 {
-		return k, p
+	if v, ok := fishLengthOfficialKP[key]; ok {
+		return v.k, v.p
 	}
-	if pv, ok := speciesLengthPOverride[key]; ok {
-		return v, pv
+	if v, ok := fishLengthSingleK[key]; ok {
+		return v.k, v.p
 	}
-	return v, defaultSpeciesLengthP
+	if host := fishPullAliasHost(key); host != key {
+		if v, ok := fishLengthOfficialKP[host]; ok {
+			return v.k, v.p
+		}
+		if v, ok := fishLengthSingleK[host]; ok {
+			return v.k, v.p
+		}
+	}
+	if v, ok := speciesLengthKOverride[key]; ok {
+		if math.Abs(k-defaultSpeciesLengthK) > 1e-9 || math.Abs(p-defaultSpeciesLengthP) > 1e-9 {
+			return k, p
+		}
+		if pv, ok := speciesLengthPOverride[key]; ok {
+			return v, pv
+		}
+		return v, defaultSpeciesLengthP
+	}
+	isDefault := math.Abs(k-defaultSpeciesLengthK) <= 1e-9 && math.Abs(p-defaultSpeciesLengthP) <= 1e-9
+	if isDefault {
+		if g, ok := fishPullSpeciesGroup[key]; ok {
+			if a, ok2 := fishLengthGroupAnchor[g]; ok2 {
+				return a.k, a.p
+			}
+		}
+	}
+	return k, p
 }

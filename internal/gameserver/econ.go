@@ -32,20 +32,22 @@ var valueRates = map[vgKey][2]float64{
 }
 
 // catchValue 计算渔获经验和展示用银价。
-// 银价只用于结算界面和 catch_log，不直接增加余额；银币在鱼市 20/2 卖鱼时入账。
+// 经验走官服实测表 fishXPRateFor（XP = trunc(c×W)，2026-11 抓包标定，覆盖全部鱼种档位）；
+// 银价仍走 valueRates/缺省 0.1，只用于结算界面和 catch_log，不直接增加余额；银币在鱼市 20/2 卖鱼时入账。
 func catchValue(species string, grade, weightG int64) (xp, silver int64) {
 	rate, ok := valueRates[vgKey{species, grade}]
-	xpRate, silverRate := 0.4, 0.0
+	silverRate := 0.0
 	if ok {
-		xpRate, silverRate = rate[0], rate[1]
+		silverRate = rate[1]
 	} else if grade >= 2 {
 		silverRate = 0.1
 	}
+	xpRate := fishXPRateFor(species, grade)
 	w := weightG
 	if w < 1 {
 		w = 1
 	}
-	xp = int64(math.Max(1, math.Round(xpRate*float64(w))))
+	xp = int64(math.Max(1, math.Trunc(xpRate*float64(w))))
 	silver = int64(math.Max(0, math.Round(silverRate*float64(w)/silverRateSeedDivisor)))
 	return
 }
