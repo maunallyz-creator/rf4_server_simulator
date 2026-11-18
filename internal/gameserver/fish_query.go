@@ -186,7 +186,7 @@ func (s *Server) QueryFish(ctx context.Context, req FishQueryRequest) (*FishQuer
 	}
 	weatherCache := map[weatherKey]fishingWeather{}
 	names, _ := s.cachedFishNames(ctx, base)
-	rule := fishBaitRules[ruleName(names[req.Fish])]
+	rule, _ := lookupFishBaitRule(names[req.Fish])
 	evaluate := func(loc fishQueryMap, bait fishQueryBait, point fishQueryPoint, at time.Time, rig int64, depth int64, layer float64, action string, mask uint32) (FishQueryPlan, error) {
 		c := base
 		c.loc, c.baits, c.now, c.rigType, c.depthCM, c.lureLayer, c.lureAction, c.lureMask = loc.scene, []string{bait.id}, at, rig, depth, layer, action, mask

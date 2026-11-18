@@ -2,6 +2,7 @@ package admin
 
 import (
 	"encoding/json"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -25,6 +26,7 @@ type baitPrefRow struct {
 	Tier2    int                `json:"tier2"`     // tier2 饵数量
 	Total    int                `json:"total"`     // 有证据的饵总数
 	Baits    []baitPrefEvidence `json:"baits"`     // 证据最强的若干条
+	Official []baitPrefShare    `json:"official"`  // 官方纪录里的饵料占比（rf4records_catch）
 	Locs     []string           `json:"locs"`      // 出现水域（截断）
 	InStrict bool               `json:"in_strict"` // 严格模式下是否还能咬（规则命中或 tier>0）
 
@@ -48,6 +50,13 @@ type baitPrefEvidence struct {
 	BaitID   string `json:"bait_id"`
 	Tier     int    `json:"tier"`
 	Evidence int    `json:"evidence"`
+}
+
+// baitPrefShare 官方渔获纪录中该饵占该鱼的比例，判鱼 strict 档位直接用它。
+type baitPrefShare struct {
+	BaitID string  `json:"bait_id"`
+	Pct    float64 `json:"pct"`
+	Count  int     `json:"count"`
 }
 
 // handleBaitPrefs 鱼饵偏好总览：每条鱼一行，含规则表条目与饵效证据。
@@ -139,6 +148,42 @@ func (s *Server) handleBaitPrefs(w http.ResponseWriter, r *http.Request) {
 	}
 	evRows.Close()
 
+	// 2.5) 官方饵料占比：rf4records_catch 聚合，口径与 gameserver.loadRf4Share 一致
+	// （按鱼算分母，单饵样本量低于 bait_share_min_count 的不计入）。
+	shareByFish := map[string][]baitPrefShare{}
+	minCount := s.baitShareMinCount(r.Context())
+	if shRows, serr := s.db.SQL.QueryContext(r.Context(), `
+		SELECT fish_key, bait_id, cnt, tot FROM (
+			SELECT fish_key, bait_id, count(*) AS cnt,
+			       sum(count(*)) OVER (PARTITION BY fish_key) AS tot
+			FROM rf4records_catch WHERE fish_key <> '' AND bait_id <> ''
+			GROUP BY fish_key, bait_id
+		) WHERE cnt >= ?`, minCount); serr == nil {
+		type pair struct {
+			fk, bait string
+			pct      float64
+			cnt      int
+		}
+		all := map[string][]pair{}
+		for shRows.Next() {
+			var fk, bait string
+			var cnt, tot int
+			if shRows.Scan(&fk, &bait, &cnt, &tot) == nil && tot > 0 {
+				all[fk] = append(all[fk], pair{fk, bait, 100 * float64(cnt) / float64(tot), cnt})
+			}
+		}
+		shRows.Close()
+		for fk, list := range all {
+			sort.Slice(list, func(i, j int) bool { return list[i].pct > list[j].pct })
+			if len(list) > 8 {
+				list = list[:8]
+			}
+			for _, p := range list {
+				shareByFish[fk] = append(shareByFish[fk], baitPrefShare{BaitID: p.bait, Pct: math.Round(p.pct*10) / 10, Count: p.cnt})
+			}
+		}
+	}
+
 	// 3) 水域归属（可选，用于筛选后的展示）
 	locsByFish := map[string][]string{}
 	if locRows, err := s.db.SQL.QueryContext(r.Context(),
@@ -220,6 +265,7 @@ func (s *Server) handleBaitPrefs(w http.ResponseWriter, r *http.Request) {
 			row.Tier3, row.Tier2, row.Total = a.tier3, a.tier2, a.total
 			row.Baits = a.baits
 		}
+		row.Official = shareByFish[f.key]
 		// 严格模式判定：只有“能落到至少一款饵”才算还在咬钩池里。
 		// ① 覆盖行被停用（enabled=0）时该鱼不参与；② 规则允许列表为空
 		// （整条被清理成空）且没有证据，也不会再出现；③ 有证据（tier>0）

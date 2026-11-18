@@ -35,6 +35,34 @@ type fishBaitRule struct {
 
 var fishBaitRules = parseFishBaitRules(fishBaitRuleText)
 
+// ruleVariantRune 把异体字归一到规则表使用的写法。客户端中文名与规则表
+// 之间长期存在「鮟鱇 / 𩽾𩾌」这类同物异写，只差一个码位就会让整条鱼
+// 在严格模式下失去规则（表现为该鱼吃什么都被拒）。
+var ruleVariantRune = map[rune]rune{
+	0x9b9f: 0x29f7e, // 鮟 -> 𩽾
+	0x9c47: 0x29f8c, // 鱇 -> 𩾌
+	0x9c79: 0x9c79,  // 鱹 占位（保留自身）
+}
+
+// lookupFishBaitRule 按鱼名找规则：先精确命中，再退一步去掉结尾的「鱼」
+// 再试（客户端「大西洋鲑」vs 规则「大西洋鲑鱼」、数据库「泥鳅鱼」vs
+// 规则「泥鳅」）。两个方向都只试一次，不做模糊匹配，避免误配同科鱼。
+func lookupFishBaitRule(fishZh string) (fishBaitRule, bool) {
+	if r, ok := fishBaitRules[ruleName(fishZh)]; ok {
+		return r, true
+	}
+	key := ruleName(fishZh)
+	if strings.HasSuffix(key, "鱼") {
+		if r, ok := fishBaitRules[strings.TrimSuffix(key, "鱼")]; ok {
+			return r, true
+		}
+	}
+	if r, ok := fishBaitRules[key+"鱼"]; ok {
+		return r, true
+	}
+	return fishBaitRule{}, false
+}
+
 const maxBaitPreference = 1.5 * 1.15
 
 func ruleName(s string) string {
@@ -50,6 +78,9 @@ func ruleName(s string) string {
 			return '鳗'
 		case '鳌':
 			return '螯'
+		}
+		if v, ok := ruleVariantRune[r]; ok {
+			return v
 		}
 		if unicode.IsSpace(r) {
 			return -1
@@ -332,7 +363,7 @@ func (s *Server) loadFishNames(ctx context.Context) (map[string]string, bool) {
 	for rows.Next() {
 		var key, name string
 		if rows.Scan(&key, &name) == nil {
-			if _, known := fishBaitRules[ruleName(name)]; known {
+			if _, known := lookupFishBaitRule(name); known {
 				names[key] = name
 				continue
 			}

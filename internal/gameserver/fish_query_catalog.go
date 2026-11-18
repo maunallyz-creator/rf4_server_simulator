@@ -147,7 +147,7 @@ func (s *Server) fishQueryMaps(ctx context.Context, req FishQueryRequest, c fish
 				}
 			}
 			nameMap, _ := s.cachedFishNames(ctx, c)
-			rule := fishBaitRules[ruleName(nameMap[req.Fish])]
+			rule, _ := lookupFishBaitRule(nameMap[req.Fish])
 			for _, zone := range rule.chartZones {
 				priority[zone] += 1000
 			}

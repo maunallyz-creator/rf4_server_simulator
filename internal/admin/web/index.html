@@ -743,7 +743,8 @@ async function loadBaitPrefs(){
   BAIT_ROWS=rows;
   BAIT_RULES_ON=d.rules_enabled===true;
   const edited=rows.filter(r=>r.source==='override').length;
-  $('#baitSummary').textContent=`共 ${rows.length} 种鱼 · 规则表 ${d.rule_count} 条 · 已覆盖 ${edited} 种 · 有规则 ${rows.filter(r=>r.has_rule).length} · 无规则 ${rows.filter(r=>!r.has_rule).length}`;
+  const withOfficial=rows.filter(r=>(r.official||[]).length>0).length;
+  $('#baitSummary').textContent=`共 ${rows.length} 种鱼 · 规则表 ${d.rule_count} 条 · 已覆盖 ${edited} 种 · 有规则 ${rows.filter(r=>r.has_rule).length} · 无规则 ${rows.filter(r=>!r.has_rule).length} · 官方份额 ${withOfficial} 种`;
   renderBaitTable();
 }
 function baitTierBadge(t){return t===3?'<span class="pill" style="background:#1f6f52;color:#bff5df">T3</span>':t===2?'<span class="pill" style="background:#2a5c86;color:#cfe9ff">T2</span>':'<span class="pill">T1</span>'}
@@ -764,8 +765,10 @@ function baitRuleHTML(r){
     ? `<div class="clamp">吃：${esc(allow.join(' / ')||'—')}</div>`+
       ((r.deny&&r.deny.length)?`<div class="muted clamp">不吃：${esc(r.deny.join(' / '))}</div>`:'')+
       ((r.bottom_only&&r.bottom_only.length)?`<div class="muted clamp">底钓只吃：${esc(r.bottom_only.join(' / '))}</div>`:'')+
-      ((r.condition&&r.condition!=='无')?`<div class="muted clamp">前置：${esc(r.condition)}</div>`:'')
-    : '<div class="muted">无规则条目 · 严格模式下仅靠饵效证据放行</div>';
+      ((r.condition&&r.condition!=='无')?`<div class="muted clamp">前置：${esc(r.condition)}</div>`:'')+
+      ((r.official&&r.official.length)?`<div class="muted clamp" style="color:#8fd0ff">官方：${r.official.slice(0,3).map(o=>esc(o.bait_id)+' '+o.pct+'%').join(' / ')}</div>`:'')
+    : '<div class="muted">无规则条目 · 严格模式下仅靠饵效证据放行</div>'+
+      ((r.official&&r.official.length)?`<div class="muted clamp">官方：${r.official.slice(0,3).map(o=>esc(o.bait_id)+' '+o.pct+'%').join(' / ')}</div>`:'');
   const tag=r.source==='override'
     ? (r.enabled?'<span class="tag gold">已覆盖</span>':'<span class="tag">覆盖已停用</span>')
     : '<span class="tag">内置</span>';
