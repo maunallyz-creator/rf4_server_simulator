@@ -156,7 +156,7 @@ type BaitRuleInfo struct {
 // ExportedBaitRules 按中文鱼名查规则表，供管理后台只读展示。
 // 返回 ok=false 表示该鱼在规则表里没有条目（严格模式下只能靠饵效证据放行）。
 func ExportedBaitRules(fishZh string) (BaitRuleInfo, bool) {
-	r, ok := fishBaitRules[ruleName(fishZh)]
+	r, ok := lookupFishBaitRule(fishZh)
 	if !ok {
 		return BaitRuleInfo{}, false
 	}
