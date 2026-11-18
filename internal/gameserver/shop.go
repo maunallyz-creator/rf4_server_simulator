@@ -150,6 +150,9 @@ func hStoreBuy(goldCol bool) Handler {
 		if len(ints) > 0 {
 			offer = ints[0]
 		}
+		if body, handled := srv.tryBuyWalletAtm(ctx, storeID, itemID, goldCol); handled {
+			return body, true
+		}
 		cctx := ctx.Sess.pushCtx()
 		price, err := srv.storePrice(cctx, storeID, itemID, offer, goldCol)
 		if err != nil {

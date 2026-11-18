@@ -376,6 +376,7 @@ func TestValidateEventStageGifts(t *testing.T) {
 		`{"18":{"10":[{"item":"ab_tea_can2","qty":99}]}}`,
 		`{"14":{"10":[{"item":"ab_tea_can2","qty":99}]}}`,
 		`{"20":{"7":[{"item":"ab_tea_can2","qty":99}]}}`,
+		`{"19":{"0":[{"item":"premium_3d","qty":1},{"item":"tele_10175_5_9","qty":1}]}}`,
 	} {
 		if err := validateEventStageGifts(value); err != nil {
 			t.Fatalf("%q 应合法: %v", value, err)
@@ -383,6 +384,7 @@ func TestValidateEventStageGifts(t *testing.T) {
 	}
 	for _, value := range []string{
 		"not-json",
+		`{"19":{"-1":[{"item":"premium_3d","qty":1}]}}`,
 		`{"8":{"1":[{"item":"fcb_coffee_can2","qty":1}]}}`,
 		`{"13":{"11":[{"item":"fcb_coffee_can2","qty":1}]}}`,
 		`{"13":{"8":[{"item":"fcb_coffee_can2","qty":1}]}}`,

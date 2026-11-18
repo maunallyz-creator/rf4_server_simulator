@@ -348,8 +348,8 @@ func validateEventStageGifts(value string) error {
 		}
 		for stage, gifts := range stages {
 			s, err := strconv.Atoi(stage)
-			if err != nil || s < 1 || s > gameserver.EventStageCount(int64(n)) {
-				return fmt.Errorf("活动分支 %d 的阶段只能是 1~%d", n, gameserver.EventStageCount(int64(n)))
+			if err != nil || s < 0 || s > gameserver.EventStageCount(int64(n)) {
+				return fmt.Errorf("活动分支 %d 的阶段只能是 0~%d（0 表示全部完成）", n, gameserver.EventStageCount(int64(n)))
 			}
 			if len(gifts) == 0 {
 				return fmt.Errorf("阶段奖励 %s/%s 至少要有一件物品", branch, stage)

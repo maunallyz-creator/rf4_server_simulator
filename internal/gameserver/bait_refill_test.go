@@ -101,6 +101,47 @@ func TestSlotBaitRefillInventoryAndPersistence(t *testing.T) {
 	}
 }
 
+func TestDetachElectricReelAfterMarineBaitRefill(t *testing.T) {
+	s, rod, _, _, bait := refillFixture(t, true, 4)
+	ctx := t.Context()
+	const uid = 1000001
+	_, reel := baitTestMount(t, s, rod, "elcon_5999", 1, 0)
+	_, line := baitTestMount(t, s, rod, "braid_40888", 1, 0)
+	if _, err := s.consumeBaitEvent(ctx, uid, rod, "use", []string{bait}, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.reloadBaitForCast(ctx, uid, rod); err != nil {
+		t.Fatal(err)
+	}
+	if got := rigSlotGUIDs(t, s, rod)[catLine]; got != line {
+		t.Errorf("mounted line = %q, want %q", got, line)
+	}
+	if res := s.rigRemoveComponentInstance(ctx, uid, rod, catReel, reel, 0); res == nil || res.ReturnedTree == nil {
+		t.Fatal("electric reel missing from detach result")
+	}
+	old, err := s.DB.GetItemByGUID(ctx, reel)
+	if err != nil || old == nil || old.Container != "backpack" || old.RigGUID != "" {
+		t.Fatalf("original reel did not return to backpack: %v", err)
+	}
+}
+
+func TestReplaceElectricReelAfterBaitOrdering(t *testing.T) {
+	s, _ := newRigTestServer(t)
+	rod, _, _ := selectedHookMarineRig(t, s, []string{"worm_01", "muckworm"})
+	_, reel := baitTestMount(t, s, rod, "elcon_5999", 1, 0)
+	if err := s.orderBaitsByHook(t.Context(), 1000001, rod); err != nil {
+		t.Fatal(err)
+	}
+	_, replacement := baitTestMount(t, s, rod, "elcon_6003", 1, 0)
+	if got := rigSlotGUIDs(t, s, rod)[catReel]; got != replacement {
+		t.Fatalf("replacement reel = %q, want %q", got, replacement)
+	}
+	old, err := s.DB.GetItemByGUID(t.Context(), reel)
+	if err != nil || old == nil || old.Container != "backpack" || old.RigGUID != "" {
+		t.Fatalf("original reel did not return to backpack: %v", err)
+	}
+}
+
 func TestSlotBaitRefillEmptyOccupiedAndRollback(t *testing.T) {
 	for _, fish := range []bool{false, true} {
 		for _, scenario := range []string{"empty", "occupied", "insert", "quantity", "parent", "request"} {

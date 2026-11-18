@@ -779,20 +779,15 @@ func (s *Server) reconcileRigProjection(ctx context.Context, rodGUID string, col
 		fields[idx].Val = buildRig153Like(stored, name, rigType, comps, depth, rigClipOf(stored))
 		s.saveItemFields(ctx, row, fields)
 	}
+	return s.DB.ReplaceRigComponents(ctx, rodGUID, rigProjection(row.WireClass, fields, fields[idx].Val))
+}
+
+// rigProjection derives every slot from the rod snapshot, including its dedicated reel and line fields.
+func rigProjection(wireClass string, fields []proto.Field, rig *proto.Value) []store.RigComponent {
+	_, rigType, _ := rigIdentity(rig)
+	comps := rigCompsOf(rig)
 	out := make([]store.RigComponent, 0, len(comps)+2)
-	keys := make([]int64, 0, len(comps))
-	for key := range comps {
-		keys = append(keys, key)
-	}
-	sort.Slice(keys, func(i, j int) bool {
-		ci, cj := rigCompCategory(keys[i]), rigCompCategory(keys[j])
-		if ci != cj {
-			return ci < cj
-		}
-		return rigCompOrdinal(keys[i]) < rigCompOrdinal(keys[j])
-	})
-	for _, key := range keys {
-		c := comps[key]
+	for key, c := range comps {
 		if c.GUID == "" {
 			continue
 		}
@@ -807,7 +802,7 @@ func (s *Server) reconcileRigProjection(ctx context.Context, rodGUID string, col
 	}
 	for _, cat := range []int64{catReel, catLine} {
 		csName := categorySlotField[cat]
-		sidx := fieldIdxByCS(row.WireClass, csName)
+		sidx := fieldIdxByCS(wireClass, csName)
 		if sidx < 0 || sidx >= len(fields) || !validRigGUID(fields[sidx].Hex) {
 			continue
 		}
@@ -822,7 +817,7 @@ func (s *Server) reconcileRigProjection(ctx context.Context, rodGUID string, col
 		}
 		return out[i].Ordinal < out[j].Ordinal
 	})
-	return s.DB.ReplaceRigComponents(ctx, rodGUID, out)
+	return out
 }
 
 // cloneFields 深拷贝字段数组，供拆分子实例使用。

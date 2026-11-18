@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"time"
 
 	"rf4server/internal/proto"
 	"rf4server/internal/store"
@@ -42,6 +43,7 @@ type eventStageGiftPlan struct {
 
 // eventStageGiftPlans 解析并校验 tunable 配置，按分支、阶段升序返回。
 // JSON：{"<branch>": {"<stage>": [{"item":"fcb_coffee_can2","qty":1}]}}。
+// stage=0 表示整条任务线完成后的额外奖励，奖杯仍由 qualification_rewards 发放。
 // 非法条目跳过并 warn（单个坏条目不拖垮整份配置）。
 func (s *Server) eventStageGiftPlans() []eventStageGiftPlan {
 	raw := s.tunableS(eventStageGiftsKey, "")
@@ -70,13 +72,17 @@ func (s *Server) eventStageGiftPlans() []eventStageGiftPlan {
 		}
 		for stageStr, gifts := range stages {
 			stage, err := strconv.ParseInt(stageStr, 10, 32)
-			if err != nil || stage < 1 || stage > int64(len(counts)) {
+			if err != nil || stage < 0 || stage > int64(len(counts)) {
 				s.log.Warn("阶段礼物配置阶段号非法，跳过", "branch", branch, "stage", stageStr)
 				continue
 			}
 			plan := eventStageGiftPlan{Branch: branch, Stage: stage}
 			seen := map[string]bool{}
 			for _, g := range gifts {
+				// 本分支奖杯已有独立发放及领取标记，完成奖励不能再发一份。
+				if stage == 0 && g.Item != "" && g.Item == qualificationCupByBranch[branch].ItemID {
+					continue
+				}
 				if g.Item == "" {
 					s.log.Warn("阶段礼物配置物品键为空，跳过", "branch", branch, "stage", stage)
 					continue
@@ -132,6 +138,20 @@ func eventStageGiftPreview(plans []eventStageGiftPlan, branch, stage uint64) *pr
 	return arr
 }
 
+// eventCompletionGiftPreview 对应官服 5009.f4，顺序为额外奖励、既有奖杯。
+func eventCompletionGiftPreview(plans []eventStageGiftPlan, branch uint64) *proto.Value {
+	arr := eventStageGiftPreview(plans, branch, 0)
+	if cup, ok := qualificationCupByBranch[int64(branch)]; ok {
+		for _, v := range arr.Items {
+			if v.Hex == proto.BytesOf([]byte(cup.ItemID)).Hex {
+				return arr
+			}
+		}
+		arr.Items = append(arr.Items, proto.BytesOf([]byte(cup.ItemID)))
+	}
+	return arr
+}
+
 // eventStageGiftKey 阶段礼物幂等键。
 func eventStageGiftKey(uid, branch, stage int64) string {
 	return fmt.Sprintf("event-stage-gift:%d:%d:%d", uid, branch, stage)
@@ -146,16 +166,9 @@ func (s *Server) ensureEventStageGifts(ctx context.Context, uid int64) []*store.
 	if s == nil || s.DB == nil {
 		return nil
 	}
-	if s.eventStage() == 0 {
+	enabled := s.activeQualificationEventBranches(time.Now().Unix())
+	if len(enabled) == 0 {
 		return nil
-	}
-	branches := s.eventBranches()
-	if len(branches) == 0 {
-		return nil
-	}
-	enabled := make(map[int64]bool, len(branches))
-	for _, branch := range branches {
-		enabled[int64(branch)] = true
 	}
 	plans := s.eventStageGiftPlans()
 	if len(plans) == 0 {
@@ -167,6 +180,7 @@ func (s *Server) ensureEventStageGifts(ctx context.Context, uid int64) []*store.
 		return nil
 	}
 	stageRules := map[int64][]int64{} // key = branch*100+stage，仅活动分支非缺口规则
+	branchRules := map[int64][]int64{}
 	for _, r := range qualificationRules {
 		if eventGapRuleIDs[r.ID] {
 			continue
@@ -177,6 +191,7 @@ func (s *Server) ensureEventStageGifts(ctx context.Context, uid int64) []*store.
 		}
 		key := branch*100 + (r.ID%1000)/100
 		stageRules[key] = append(stageRules[key], r.ID)
+		branchRules[branch] = append(branchRules[branch], r.ID)
 	}
 	var granted []*store.Item
 	var names []string
@@ -186,6 +201,9 @@ func (s *Server) ensureEventStageGifts(ctx context.Context, uid int64) []*store.
 			continue
 		}
 		rules := stageRules[plan.Branch*100+plan.Stage-1]
+		if plan.Stage == 0 {
+			rules = branchRules[plan.Branch]
+		}
 		if len(rules) == 0 {
 			continue // 阶段没有可判定任务，不能凭空发放
 		}
@@ -201,7 +219,7 @@ func (s *Server) ensureEventStageGifts(ctx context.Context, uid int64) []*store.
 		}
 		items, stageNames := s.grantEventStageGift(ctx, uid, plan)
 		granted = append(granted, items...)
-		if len(items) > 0 {
+		if len(stageNames) > 0 {
 			names = append(names, stageNames...)
 		}
 	}
@@ -262,11 +280,17 @@ func (s *Server) grantEventStageGift(ctx context.Context, uid int64, plan *event
 		return nil, nil
 	}
 	prepared := make([]*store.Item, 0, len(plan.Gifts))
+	membershipDays := int64(0)
 	for _, g := range plan.Gifts {
 		def, err := s.DB.GetItemDefByItemID(ctx, g.ItemID)
 		if err != nil || def == nil {
 			s.log.Warn("阶段礼物定义不存在", "item", g.ItemID, "err", err)
 			return nil, nil
+		}
+		// 官服预览含 premium_3d；本地直接兑现三天服务，不创建无法使用的凭证。
+		if g.ItemID == "premium_3d" {
+			membershipDays += 3 * g.Qty
+			continue
 		}
 		count := g.Qty
 		if countableCategories[def.Category] {
@@ -302,6 +326,12 @@ func (s *Server) grantEventStageGift(ctx context.Context, uid int64, plan *event
 	if n, err := res.RowsAffected(); err != nil || n == 0 {
 		return nil, nil // 已发放过
 	}
+	if membershipDays > 0 {
+		if err := grantEventMembershipTx(ctx, tx, uid, membershipDays, time.Now().Unix()); err != nil {
+			s.log.Warn("活动会员发放失败", "uid", uid, "err", err)
+			return nil, nil
+		}
+	}
 	var out []*store.Item
 	for _, it := range prepared {
 		row, err := grantEventStageGiftItemTx(ctx, tx, it)
@@ -325,4 +355,30 @@ func (s *Server) grantEventStageGift(ctx context.Context, uid int64, plan *event
 		}
 	}
 	return finalEventStageGiftItems(out), names
+}
+
+// 与物品及阶段领取标记同事务；沿用会员购买的 profile 真源和在线刷新队列。
+func grantEventMembershipTx(ctx context.Context, tx *sql.Tx, uid, days, now int64) error {
+	var kind, expires int64
+	if err := tx.QueryRowContext(ctx, `SELECT membership,membership_exp FROM profile WHERE uid=?`, uid).Scan(&kind, &expires); err != nil {
+		return err
+	}
+	if kind == 2 {
+		return nil
+	} // 永久会员不能降级或覆盖到期时间。
+	base := now
+	if kind == 1 && expires > base {
+		base = expires
+	}
+	if days <= 0 || days > (253402300799-base)/86400 {
+		return fmt.Errorf("活动会员到期时间超出范围")
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE profile SET membership=1,membership_exp=?,updated_ts=? WHERE uid=?`, base+days*86400, now, uid); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO txn(uid,ts,kind,item_id,note) VALUES(?,?,'membership_reward','premium_3d',?)`, uid, now, fmt.Sprintf("event_reward_days=%d", days)); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, `INSERT INTO admin_queue(payload,created_ts) VALUES(?,?)`, fmt.Sprintf(`{"op":"refresh_player","uid":%d}`, uid), now)
+	return err
 }

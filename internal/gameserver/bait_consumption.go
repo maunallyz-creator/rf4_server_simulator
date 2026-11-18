@@ -1020,12 +1020,7 @@ func (s *Server) orderBaitsByHook(ctx context.Context, uid int64, rod string) er
 	if err := updateItemFieldsTx(ctx, s.DB, tx, parent, fields); err != nil {
 		return err
 	}
-	components := make([]store.RigComponent, 0, len(comps))
-	for _, comp := range comps {
-		components = append(components, store.RigComponent{
-			Slot: comp.Category, Ordinal: comp.Ordinal, GUID: comp.GUID, Extra: comp.Extra,
-		})
-	}
+	components := rigProjection(parent.WireClass, fields, fields[idx].Val)
 	if err := s.DB.ReplaceRigComponentsTx(ctx, tx, rod, components); err != nil {
 		return err
 	}

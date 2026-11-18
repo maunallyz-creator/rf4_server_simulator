@@ -40,6 +40,10 @@ var categoryWireClass = map[int64]wireClassEntry{
 	15: {"cjigljdikhe", 138}, // 钢丝/编织前导
 	17: {"ioombppcnlh", 141}, // 拟饵（f0 gpoaffnjbdo=args(60) 出厂钩数组）
 	18: {"bigdipenecj", 124},
+	// 手套：ny_mitts 的六个服装属性对应定义 peomolgjoeh/12017，
+	// 实例为 bdbcnhkogcc/113（同一组六属性 + 物品实例公共字段）。
+	// 协议字段已用 proto.ps1 核对；MMXXVI 领取/穿戴仍需客户端实机回归。
+	21: {"bdbcnhkogcc", 113},
 	22: {"hcahlnccaek", 114},
 	23: {"blpddffbgjg", 115},
 	25: {"nffjdjfkjem", 118},

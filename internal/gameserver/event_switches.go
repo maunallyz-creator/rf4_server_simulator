@@ -188,7 +188,7 @@ func eventBranchNode(branch uint64, counts []uint64, stage uint32, giftPlans []e
 		proto.Field{Op: "BYTE", Num: ptrU64(uint64(stage))},
 		proto.Field{Op: "BYTE", Num: ptrU64(0)},
 		proto.Field{Op: "VAL", Val: eventStageList(branch, counts, giftPlans)},
-		proto.Field{Op: "VAL", Val: nullVal()},
+		proto.Field{Op: "VAL", Val: eventCompletionGiftPreview(giftPlans, branch)},
 		proto.Field{Op: "VAL", Val: nullVal()},
 	)
 }

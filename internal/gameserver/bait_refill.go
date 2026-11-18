@@ -295,10 +295,7 @@ func (s *Server) reloadSlotBait(ctx context.Context, uid int64, rodGUID string) 
 		if err := updateItemFieldsTx(ctx, s.DB, tx, owner, fields); err != nil {
 			return baitChange{}, err
 		}
-		var projection []store.RigComponent
-		for _, c := range rigCompsOf(fields[idx].Val) {
-			projection = append(projection, store.RigComponent{Slot: c.Category, Ordinal: c.Ordinal, GUID: c.GUID, Extra: c.Extra})
-		}
+		projection := rigProjection(owner.WireClass, fields, fields[idx].Val)
 		if err := s.DB.ReplaceRigComponentsTx(ctx, tx, owner.GUID, projection); err != nil {
 			return baitChange{}, err
 		}
