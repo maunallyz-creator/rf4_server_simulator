@@ -1,7 +1,9 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"sort"
@@ -29,6 +31,11 @@ type baitPrefRow struct {
 	Official []baitPrefShare    `json:"official"`  // 官方纪录里的饵料占比（rf4records_catch）
 	Locs     []string           `json:"locs"`      // 出现水域（截断）
 	InStrict bool               `json:"in_strict"` // 严格模式下是否还能咬（规则命中或 tier>0）
+	// 这鱼吃不吃：把候选饵逐条过一遍运行时判定，给玩家一句人话结论。
+	BiteReady    int    `json:"bite_ready"`    // 会咬的饵数
+	BiteFallback int    `json:"bite_fallback"` // 只保底的饵数
+	BiteBlocked  int    `json:"bite_blocked"`  // 被规则挡掉的饵数
+	BiteVerdict  string `json:"bite_verdict"`  // 一句话结论
 
 	// 鱼口画像（fish_ecology，与判鱼 G 层同表同源）：按类食性权重 + 水层 + 档位体重线。
 	Diet   map[string]float64 `json:"diet,omitempty"` // worm/fish/boilie/plant/crustacean/lure
@@ -54,9 +61,99 @@ type baitPrefEvidence struct {
 
 // baitPrefShare 官方渔获纪录中该饵占该鱼的比例，判鱼 strict 档位直接用它。
 type baitPrefShare struct {
-	BaitID string  `json:"bait_id"`
-	Pct    float64 `json:"pct"`
-	Count  int     `json:"count"`
+	BaitID  string  `json:"bait_id"`
+	Pct     float64 `json:"pct"`
+	Count   int     `json:"count"`
+	Verdict string  `json:"verdict,omitempty"` // bite / fallback / blocked
+	Reason  string  `json:"reason,omitempty"`
+}
+
+// baitMeta 是判定「会不会咬」所需的单款饵静态属性。
+type baitMeta struct {
+	ID       string
+	NameZh   string
+	Category int64
+	LureType int64
+	BaitType int64
+}
+
+// loadBaitMeta 读 item_def + item_catalog，得到饵料静态属性表。
+func loadBaitMeta(ctx context.Context, db *store.DB) map[string]baitMeta {
+	out := map[string]baitMeta{}
+	rows, err := db.SQL.QueryContext(ctx, `
+		SELECT d.item_id, COALESCE(c.name_zh, c.name, ''), d.category,
+		       CAST(COALESCE(json_extract(d.attrs_json,'$.mbemakijdeh'),'0') AS INTEGER),
+		       CAST(COALESCE(json_extract(d.attrs_json,'$.fopbhlmkcpe'),'0') AS INTEGER)
+		FROM item_def d LEFT JOIN item_catalog c ON c.item_id = d.item_id
+		WHERE d.category IN (17,27)`)
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var m baitMeta
+		if rows.Scan(&m.ID, &m.NameZh, &m.Category, &m.LureType, &m.BaitType) == nil {
+			out[m.ID] = m
+		}
+	}
+	return out
+}
+
+// applyBiteVerdict 把该鱼的热门饵逐条过运行时判定，产出一句人话结论：
+// 「能咬 12 种（含 3 种首选）」「只能保底 4 种」「被规则挡掉 5 种」。
+func applyBiteVerdict(row *baitPrefRow, meta map[string]baitMeta) {
+	type cand struct {
+		id   string
+		name string
+		cat  int64
+		lure int64
+		bt   int64
+		pct  float64
+		tier int
+	}
+	var cands []cand
+	seen := map[string]bool{}
+	for _, o := range row.Official {
+		if seen[o.BaitID] {
+			continue
+		}
+		seen[o.BaitID] = true
+		m := meta[o.BaitID]
+		cands = append(cands, cand{o.BaitID, m.NameZh, m.Category, m.LureType, m.BaitType, o.Pct, 0})
+	}
+	for _, b := range row.Baits {
+		if seen[b.BaitID] {
+			continue
+		}
+		seen[b.BaitID] = true
+		m := meta[b.BaitID]
+		cands = append(cands, cand{b.BaitID, m.NameZh, m.Category, m.LureType, m.BaitType, 0, b.Tier})
+	}
+	if len(cands) == 0 {
+		row.BiteVerdict = "无可用饵"
+		return
+	}
+	for _, c := range cands {
+		verdict, _, _ := gameserver.ExportedBaitVerdict(row.NameZh, c.id, c.name, c.cat, c.lure, c.bt, c.pct, c.tier)
+		switch verdict {
+		case "bite":
+			row.BiteReady++
+		case "fallback":
+			row.BiteFallback++
+		case "blocked":
+			row.BiteBlocked++
+		}
+	}
+	switch {
+	case row.BiteReady > 0 && row.BiteFallback > 0:
+		row.BiteVerdict = fmt.Sprintf("会咬 %d 种，另有 %d 种只能保底", row.BiteReady, row.BiteFallback)
+	case row.BiteReady > 0:
+		row.BiteVerdict = fmt.Sprintf("会咬 %d 种", row.BiteReady)
+	case row.BiteFallback > 0:
+		row.BiteVerdict = fmt.Sprintf("只能保底，%d 种都吃得很勉强", row.BiteFallback)
+	default:
+		row.BiteVerdict = "热门饵全被规则挡掉"
+	}
 }
 
 // handleBaitPrefs 鱼饵偏好总览：每条鱼一行，含规则表条目与饵效证据。
@@ -232,6 +329,8 @@ func (s *Server) handleBaitPrefs(w http.ResponseWriter, r *http.Request) {
 		gRows.Close()
 	}
 
+	metas := loadBaitMeta(r.Context(), s.db)
+
 	now := time.Now()
 	out := make([]baitPrefRow, 0, len(fish))
 	for _, f := range fish {
@@ -266,6 +365,7 @@ func (s *Server) handleBaitPrefs(w http.ResponseWriter, r *http.Request) {
 			row.Baits = a.baits
 		}
 		row.Official = shareByFish[f.key]
+		applyBiteVerdict(&row, metas)
 		// 严格模式判定：只有“能落到至少一款饵”才算还在咬钩池里。
 		// ① 覆盖行被停用（enabled=0）时该鱼不参与；② 规则允许列表为空
 		// （整条被清理成空）且没有证据，也不会再出现；③ 有证据（tier>0）

@@ -163,6 +163,78 @@ func ExportedBaitRules(fishZh string) (BaitRuleInfo, bool) {
 	return BaitRuleInfo{Allow: r.allow, Deny: r.deny, BottomOnly: r.bottomOnly, Condition: r.condition}, true
 }
 
+// BaitOutcome 是后台「实际能不能咬」的判定结果，四档与运行时判鱼一一对应。
+// 纯展示用途：后台拿到它就能把「这款饵现在到底会不会上鱼」直接画出来，
+// 不必让玩家去理解 strict 内部分档。
+type BaitOutcome struct {
+	BaitID   string  `json:"bait_id"`
+	Verdict  string  `json:"verdict"`  // bite=会咬 / fallback=仅保底 / blocked=被规则挡掉
+	Strength float64 `json:"strength"` // 1=首选, 0.6=可用, 0.1=保底, 0=不咬
+	Reason   string  `json:"reason"`   // 中文说明，直接展示
+}
+
+// ExportedBaitOutcomes 给出一批饵料在指定鱼上的实际判定。
+// hasOfficial/companionTier 传运行时同源数据；返回顺序与入参一致。
+func ExportedBaitOutcomes(fishZh string, baits []struct {
+	ID         string
+	NameZh     string
+	Category   int64
+	LureType   int64
+	BaitType   int64
+	OfficialPc float64
+	Tier       int
+}, minShare float64) []BaitOutcome {
+	r, hasRule := lookupFishBaitRule(fishZh)
+	out := make([]BaitOutcome, 0, len(baits))
+	for _, b := range baits {
+		rb := ruleBait{id: b.ID, name: b.NameZh, category: b.Category, lureType: b.LureType, baitType: b.BaitType}
+		allowed := hasRule && baitAllowedByRule(r, rb, nil)
+		blocked := hasRule && baitBlockedByRule(r, fishRollContext{}, rb)
+		if blocked {
+			out = append(out, BaitOutcome{BaitID: b.ID, Verdict: "blocked", Strength: 0, Reason: "规则标明不吃"})
+			continue
+		}
+		if allowed && hasRule {
+			out = append(out, BaitOutcome{BaitID: b.ID, Verdict: "bite", Strength: 1, Reason: "规则允许"})
+			continue
+		}
+		if b.OfficialPc >= minShare {
+			out = append(out, BaitOutcome{BaitID: b.ID, Verdict: "bite", Strength: 1, Reason: "官服上鱼占比高"})
+			continue
+		}
+		if b.Tier >= 3 {
+			out = append(out, BaitOutcome{BaitID: b.ID, Verdict: "bite", Strength: 0.6, Reason: "玩家实测常用"})
+			continue
+		}
+		out = append(out, BaitOutcome{BaitID: b.ID, Verdict: "fallback", Strength: 0.1, Reason: "规则未允许，仅保底咬口"})
+	}
+	return out
+}
+
+// ExportedBaitVerdict 单款饵的判定，给后台画「会咬/保底/不吃」三态。
+// 与 filterFishBaitSet 同源：规则允许 → 会咬；官服占比够高 → 会咬；
+// 只有社区证据 → 会咬但权重低；其余 → 保底；规则禁 → 不吃。
+func ExportedBaitVerdict(fishZh, baitID, baitName string, category, lureType, baitType int64, officialPct float64, tier int) (string, float64, string) {
+	r, hasRule := lookupFishBaitRule(fishZh)
+	rb := ruleBait{id: baitID, name: baitName, category: category, lureType: lureType, baitType: baitType}
+	if hasRule && baitBlockedByRule(r, fishRollContext{}, rb) {
+		return "blocked", 0, "规则标明不吃"
+	}
+	if hasRule && baitAllowedByRule(r, rb, nil) {
+		return "bite", 1, "规则允许"
+	}
+	if officialPct >= 5 {
+		return "bite", 1, "官服上鱼占比高"
+	}
+	if tier >= 3 {
+		return "bite", 0.6, "玩家实测常用"
+	}
+	if tier >= 1 || officialPct >= 1 {
+		return "fallback", 0.1, "规则未允许，仅保底"
+	}
+	return "fallback", 0.1, "规则未允许，仅保底"
+}
+
 // ExportedBaitRuleCount 规则表条目数（前端展示用）。
 func ExportedBaitRuleCount() int { return len(fishBaitRules) }
 

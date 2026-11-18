@@ -744,7 +744,10 @@ async function loadBaitPrefs(){
   BAIT_RULES_ON=d.rules_enabled===true;
   const edited=rows.filter(r=>r.source==='override').length;
   const withOfficial=rows.filter(r=>(r.official||[]).length>0).length;
-  $('#baitSummary').textContent=`共 ${rows.length} 种鱼 · 规则表 ${d.rule_count} 条 · 已覆盖 ${edited} 种 · 有规则 ${rows.filter(r=>r.has_rule).length} · 无规则 ${rows.filter(r=>!r.has_rule).length} · 官方份额 ${withOfficial} 种`;
+  const cantBite=rows.filter(r=>(r.bite_ready||0)===0&&(r.bite_fallback||0)>0).length;
+  const blockedAll=rows.filter(r=>(r.bite_ready||0)===0&&(r.bite_fallback||0)===0).length;
+  $('#baitSummary').textContent=`共 ${rows.length} 种鱼 · 规则表 ${d.rule_count} 条 · 已覆盖 ${edited} 种 · 有规则 ${rows.filter(r=>r.has_rule).length} · 无规则 ${rows.filter(r=>!r.has_rule).length} · 官方份额 ${withOfficial} 种`+
+    (cantBite||blockedAll?` · ⚠️ 只保底 ${cantBite} 种 · ⛔ 全不吃 ${blockedAll} 种`:'');
   renderBaitTable();
 }
 function baitTierBadge(t){return t===3?'<span class="pill" style="background:#1f6f52;color:#bff5df">T3</span>':t===2?'<span class="pill" style="background:#2a5c86;color:#cfe9ff">T2</span>':'<span class="pill">T1</span>'}
@@ -758,6 +761,15 @@ function baitRotationHTML(r){
   const next=rot.next_switch?new Date(rot.next_switch*1000).toLocaleTimeString():'—';
   const mode=rot.mode==='strict'?'严格':'软性';
   return `<div class="muted" style="font-size:12px;margin-top:4px">🔁 轮换 ${rot.active+1}/${rot.total} · 当前：${esc((rot.active_baits||[]).join(' / '))} · ${mode} · 下次 ${esc(next)}</div>`;
+}
+function baitVerdictHTML(r){
+  const v=r.bite_verdict||'';
+  if(!v)return '<span class="muted">—</span>';
+  const ready=r.bite_ready||0, fb=r.bite_fallback||0, blk=r.bite_blocked||0;
+  const tone=ready>0?(blk>0?'#ffd166':'#7ee0b0'):(fb>0?'#ffd166':'#ff8f8f');
+  const icon=ready>0?(blk>0?'⚠️':'✅'):(fb>0?'🟡':'⛔');
+  return `<div style="font-size:12.5px;color:${tone};font-weight:600">${icon} ${esc(v)}</div>`+
+    `<div class="muted" style="font-size:11px;margin-top:2px">首选 ${ready} · 保底 ${fb} · 不吃 ${blk}</div>`;
 }
 function baitRuleHTML(r){
   const allow=r.allow||[];
@@ -777,8 +789,8 @@ function baitRuleHTML(r){
 function renderBaitTable(){
   const el=$('#baitTable');
   if(!BAIT_ROWS.length){el.innerHTML=baitBanner()+'<div class="empty">没有匹配的鱼种</div>';return}
-  const head='<table><colgroup><col style="width:16%"><col style="width:27%"><col style="width:22%"><col style="width:14%"><col style="width:12%"><col style="width:9%"></colgroup>'+
-    '<thead><tr><th>鱼种</th><th>规则（严格模式）</th><th>偏好口（按类）</th><th>饵效证据</th><th>水域</th><th>水层</th></tr></thead><tbody>';
+  const head='<table><colgroup><col style="width:15%"><col style="width:26%"><col style="width:19%"><col style="width:13%"><col style="width:12%"><col style="width:9%"><col style="width:6%"></colgroup>'+
+    '<thead><tr><th>鱼种</th><th>规则（严格模式）</th><th>偏好口（按类）</th><th>饵效证据</th><th>吃不吃</th><th>水域</th><th>水层</th></tr></thead><tbody>';
   const body=BAIT_ROWS.map(r=>{
     const ev=`<div>${baitTierBadge(3)}${r.tier3} ${baitTierBadge(2)}${r.tier2} <span class="muted">共 ${r.total}</span></div>`+
       `<div class="muted clamp" style="font-size:12px">${esc((r.baits||[]).map(b=>b.bait_id).join('、')||'—')}</div>`;
@@ -806,7 +818,7 @@ function renderBaitTable(){
         <b style="width:40px;text-align:right;font-family:Consolas,monospace;color:${over?'#7ee0b0':'var(--muted)'}">${v.toFixed(2)}</b>
       </div>`;
     };
-    const detail=(!open)?'':`<tr><td colspan="6" style="background:#0b1623;padding:14px 18px">
+    const detail=(!open)?'':`<tr><td colspan="7" style="background:#0b1623;padding:14px 18px">
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 34px">
         <div>
           <b style="font-size:12px;color:#7a92aa">食性画像（与判鱼 G 层同源 · 黄线=门槛 0.25 / 拟饵 0.30）</b>
@@ -834,7 +846,7 @@ function renderBaitTable(){
     const row=`<tr class="${open?'ba-open':''}" onclick="toggleBaitRow('${esc(r.fish_key)}')" style="cursor:pointer">`+
       `<td><div class="bait-head"><div><b>${esc(r.name_zh)}</b><div class="muted" style="font-size:12px">${esc(r.fish_key)}</div></div>`+
       `<button class="btn alt sm bait-edit" onclick="event.stopPropagation();editBaitRule('${esc(r.fish_key)}')">编辑</button></div></td>`+
-      `<td>${baitRuleHTML(r)}</td><td><div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center">${dietHTML}</div></td><td>${ev}</td>`+
+      `<td>${baitRuleHTML(r)}</td><td><div style="display:flex;flex-wrap:wrap;gap:3px;align-items:center">${dietHTML}</div></td><td>${ev}</td><td>${baitVerdictHTML(r)}</td>`+
       `<td class="muted" style="font-size:12px"><div class="clamp">${esc((r.locs||[]).join('、')||'—')}</div></td>`+
       `<td>${layerHTML}</td></tr>`;
     return row+detail;
