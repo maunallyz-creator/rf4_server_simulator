@@ -19,6 +19,17 @@ type cachedBaitDef struct {
 	ok   bool
 }
 
+// legacyBaitIDs 把 item_catalog 里的新 id 映射回 companion_bait_fish 快照中的
+// 旧 id。两张表同名不同 id 并存（craft_bait_dough_cottage 等），只认新 id 会
+// 让这批证据永远查不到。
+var legacyBaitIDs = map[string]string{
+	"dough_cottage": "craft_bait_dough_cottage",
+	"dough_garlic":  "craft_bait_dough_garlic",
+	"porridge_corn": "craft_bait_kukuruz_kasha",
+	"dough_honey":   "craft_bait_med_testo",
+	"c_bleak_lf":    "c_bleak",
+}
+
 type localBaitEvidenceKey struct {
 	loc  string
 	bait string
@@ -216,6 +227,13 @@ func (s *Server) cachedBaitTiers(ctx context.Context, c fishRollContext, bait st
 	}
 	cache.mu.Unlock()
 	tiers := s.DB.BaitTiers(ctx, bait)
+	if len(tiers) == 0 {
+		// companion_bait_fish 预置快照用的是旧 item_id（craft_bait_* / c_bleak），
+		// 这些 id 在当前 item_def 里已不存在；不改名会让 264 行证据永久失效。
+		if old, ok := legacyBaitIDs[bait]; ok {
+			tiers = s.DB.BaitTiers(ctx, old)
+		}
+	}
 	cache.mu.Lock()
 	cache.baitTiers[bait] = tiers
 	cache.baitTierLoaded[bait] = true

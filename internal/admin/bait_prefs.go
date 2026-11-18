@@ -220,8 +220,15 @@ func (s *Server) handleBaitPrefs(w http.ResponseWriter, r *http.Request) {
 			row.Tier3, row.Tier2, row.Total = a.tier3, a.tier2, a.total
 			row.Baits = a.baits
 		}
-		// 严格模式判定：命中规则（有允许列表）或该鱼在证据表里有 >=1 条记录才会被放行。
-		row.InStrict = row.HasRule || row.Total > 0
+		// 严格模式判定：只有“能落到至少一款饵”才算还在咬钩池里。
+		// ① 覆盖行被停用（enabled=0）时该鱼不参与；② 规则允许列表为空
+		// （整条被清理成空）且没有证据，也不会再出现；③ 有证据（tier>0）
+		// 或允许列表非空才算 InStrict。
+		if row.Source == "override" && !row.Enabled {
+			row.InStrict = false
+		} else {
+			row.InStrict = len(row.Allow) > 0 || row.Total > 0
+		}
 		out = append(out, row)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].FishKey < out[j].FishKey })
