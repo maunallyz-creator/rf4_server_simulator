@@ -253,6 +253,9 @@ func itemStackQtyValue(class string, fields []proto.Field) (uint64, bool) {
 	return u64Of(fields[idx].Num), true
 }
 
+// feedMixWireClass 成品窝料（背包 cat46）实例类。
+const feedMixWireClass = "cilmgoaoofg"
+
 // qtyMirrorIdx 家族类的 UI 计数镜像槽：abmokghdbhf=f0 miecmmbpolk
 // （lillemolakn.medpgjlibog 读），bpmmimcmpof=f1 ljnnpokapig（总数槽），
 // deckldefiap=f2 ljnnpokapig（总数槽），dpghngjmnap/pcngolccead=f0
@@ -263,8 +266,25 @@ func qtyMirrorIdx(class string) int {
 		return fieldIdxByCS(class, "miecmmbpolk")
 	case "bpmmimcmpof", "deckldefiap", "dpghngjmnap", "pcngolccead":
 		return fieldIdxByCS(class, csQty)
+	case feedMixWireClass:
+		// cat46 与上述家族相反：ljnnpokapig(f10) 是权威槽（csQty），
+		// dnmfciolgep(f22) 是 UI 镜像——镜像朝权威对齐，方向别写反。
+		return fieldIdxByCS(class, "dnmfciolgep")
 	}
 	return -1
+}
+
+// ensureFeedMixQty 把成品窝料的数量槽对齐行数量：setItemQty 双写权威槽
+// ljnnpokapig（csQty）与 UI 镜像 dnmfciolgep。只动 wire 不落库——合成路径
+// setStackCountFields 对非 metaQtyFamily 家族只单写 stackQty 槽，镜像槽
+// 落库为 null（存量毒行甚至两槽皆 null），树层补齐即可，存量行自动治愈。
+// f0..f2 成分数组槽的 null 物化不在本函数——那是 #537 projectFeedRecipe
+// 的职责（注册表码 50/52/51），此处不重复。
+func ensureFeedMixQty(it *store.Item, fields []proto.Field) {
+	if it == nil || it.WireClass != feedMixWireClass {
+		return
+	}
+	_ = setItemQty(feedMixWireClass, fields, uint64(it.Qty))
 }
 
 // itemQtyValue 读取实例数量槽；没有数量字段时返回 false。
@@ -380,6 +400,9 @@ func (s *Server) ItemToTree(ctx context.Context, it *store.Item) (*proto.Value, 
 		ensureRodPodSlots(it, fields)
 	}
 	obj := proto.Obj(it.WireClass, uint32(it.TypeID), fields...)
+	if err := s.projectFeedRecipe(ctx, s.DB.SQL, obj, it.GUID); err != nil {
+		return nil, err
+	}
 
 	class := it.WireClass
 	if class == deckClass {
@@ -419,6 +442,7 @@ func (s *Server) ItemToTree(ctx context.Context, it *store.Item) (*proto.Value, 
 			return nil, err
 		}
 	}
+	ensureFeedMixQty(it, obj.Fields)
 	return obj, nil
 }
 

@@ -98,6 +98,17 @@ type FishState struct {
 	Bonus          fishingSkillBonus
 	persist        fishPersistMeta
 
+	// pace 是饵效控速（bite_pace_enabled，默认关）的一杆因子：对口分、延迟
+	// 乘数、底层杆/路亚轮判定概率、打窝压缩。仅进程内：重启后 PaceKnown=false，
+	// timer 触发前由 ensurePaceState 惰性重算。语义见 specs/changes/bite-pace/spec.md。
+	PaceScore    float64
+	PaceFactor   float64
+	PaceProb     float64
+	PaceLureProb float64
+	PaceGround   float64
+	PaceTier     int
+	PaceKnown    bool
+
 	hookedChatFishGUID string // 仅进程内：同一尾鱼的确认与拒收重推共用播报标记。
 	// 仅进程内：耐力播报的节流时间与鱼标识，不进持久化快照。
 	lastStaminaReportAt time.Time
@@ -479,6 +490,14 @@ func (s *Server) biteDelayInWeather(st *FishState, weather fishingWeather, now t
 		return math.Max(0.05, cfg.fixed)
 	}
 	weatherDelay := s.weatherBiteDelayFactor(st, weather, now)
+	// 饵效控速（bite_pace_enabled）只替换非路亚族的采样后处理：乘对口分档位
+	// 因子与打窝压缩，按钓组族 clamp（底/浮 6~60s、海底钓 3~30s）。路亚窗口
+	// 与落水保护不动，节奏改走单轮判定概率（st.PaceLureProb）。
+	// 调用方需持有 st.mu（查鱼路径的 st 为本地对象，无并发）。
+	if st != nil && st.PaceKnown && s.paceEnabled() && !rigTypeLureFamily[st.RigType] {
+		return s.paceStandardBiteDelay(officialPushDelay(), weatherDelay, bonus.BiteSpeed,
+			st.PaceFactor, st.PaceGround, marineRigType(st.RigType), cfg.scale)
+	}
 	if st != nil && rigTypeLureFamily[st.RigType] {
 		d := (1.5 + rand.Float64()*(6.0-1.5)) * weatherDelay
 		return lureBiteDelay(d, bonus.BiteSpeed, cfg.lureMax, cfg.scale)
@@ -2887,6 +2906,8 @@ func (s *Server) scheduleBiteState(sess *Session, st *FishState, preserveHooked,
 	}
 	now := time.Now()
 	bonus := s.fishingBonus(sess.pushCtx(), sess.Userid, st.RigType, st.GearGuid)
+	// 饵效控速：新杆（resetCast）按当前饵重算对口分；补排/脱钩重排复用本杆缓存。
+	pace := s.computePaceState(sess, st, resetCast)
 	st.mu.Lock()
 	if completedCatchPending(st) {
 		st.mu.Unlock()
@@ -2935,6 +2956,7 @@ func (s *Server) scheduleBiteState(sess *Session, st *FishState, preserveHooked,
 		st.NeedBite = false
 	}
 	st.Bonus = bonus
+	st.storePaceState(pace)
 	delay := s.biteDelayInWeather(st, sess.weatherAt(st.Loc, now), now, bonus)
 	delay *= s.hookBiteDelayFactorForRig(sess.pushCtx(), sess.Userid, st.GearGuid)
 	s.armBiteTimerLocked(sess.Userid, st, now.Add(time.Duration(delay*float64(time.Second))))
@@ -2963,6 +2985,9 @@ func (s *Server) onRodBiteTimerTicket(uid int64, st *FishState, ticket fishingTi
 	if sess != nil {
 		sess.updateHappyHour(time.Now(), false)
 	}
+	// 饵效控速惰性补算：重启恢复的杆 PaceKnown=false，触发前补一次节奏因子，
+	// 防止恢复后的杆按中性因子（无节奏控制）判鱼。
+	s.ensurePaceState(sess, st)
 	st.mu.Lock()
 	if ticket.generation != st.castGeneration || ticket.sequence != st.biteTicket {
 		st.mu.Unlock()
@@ -2996,7 +3021,8 @@ func (s *Server) onRodBiteTimerTicket(uid int64, st *FishState, ticket fishingTi
 		base = st.FallTs
 	}
 	lure := rigTypeLureFamily[st.RigType]
-	floor := biteFloorDelay(s.effectiveBiteDelaySettings(st), lure)
+	floorCfg := s.effectiveBiteDelaySettings(st)
+	floor := s.paceFloorShrink(floorCfg, st, lure, biteFloorDelay(floorCfg, lure))
 	minWait := time.Second
 	if lure {
 		minWait = 500 * time.Millisecond
@@ -3068,6 +3094,10 @@ func (s *Server) onRodBiteTimerTicket(uid int64, st *FishState, ticket fishingTi
 	}
 	// 窝料死窝闸门：同一格子堆超过 15 份开始压开口率，22 份以上不排咬钩。
 	probability *= s.groundbaitBiteGate(s.dbCtx(), uid, st.Loc, x, z, hasPos, st.Spot, st.RigType)
+	// 饵效控速：单轮判定概率按对口分三档（路亚轮单独一套参数）。
+	// 受当前开关门控（审查 P2-1）：运行中热关闭后，残留的 st.PaceKnown
+	// 不得继续压低本杆开口率。
+	probability *= s.rodPaceProb(st)
 	if rand.Float64() >= probability {
 		s.log.Info("鱼口未命中，继续等待", "rod", shortGUID(st.GearGuid), "rig_type", st.RigType)
 		s.emptyWeatherBiteLocked(sess, st, now)

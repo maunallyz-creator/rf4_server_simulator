@@ -13,7 +13,7 @@ BAIT_MAP = {
     "Caddisfly": "caddisfly",
     "Caster": "maggot_caster",
     "Cockchafer": "maybug",
-    "Cockchafer Larva": "maybug_larva",
+    "Cockchafer Larva": "maybug_larva",  # 土蚕（成虫是 maybug）
     "Cornmeal porridge": "porridge_corn",
     "Cricket": "cricket",
     "Crucian Carp": "c_carp_lf",
@@ -22,7 +22,7 @@ BAIT_MAP = {
     "Diced potatoes": "potato",
     "Dung beetle": "dorbeetle",
     "Fly": "fly",
-    "Frog": "baitfrog",
+    "Frog": "baitfrog",  # 静态库无 frog，只有 baitfrog
     "Garlic dough": "dough_garlic",
     "Gibel Carp": "crucian_lf",
     "Gizzard Shad": "gizshad_lf",
@@ -37,15 +37,15 @@ BAIT_MAP = {
     "Mayfly larva": "naiad",
     "Mole cricket": "gryllotalpa",
     "Nereis": "fb_nereis",
-    "Nightcrawler": "vypolzok_01",
+    "Nightcrawler": "vypolzok_01",  # 地龙（不是莫斯科培育蚯蚓）
     "Pearl barley": "porridge_pearl_barley",
     "Perch": "perch_lf",
     "Pieces of fish": "fish_pieces",
-    "Red compost worm": "muckworm",
+    "Red compost worm": "muckworm",  # 红蚯蚓（粪蚯蚓是 worm_sur/worm_volh/worm_asurv）
     "Ruffe": "ruffe_lf",
-    "Siberian Loach": "sybgolec_lf",
+    "Siberian Loach": "sybgolec_lf",  # 董氏须鳅（无 vjun 商品）
     "Rhinoceros beetle larva": "unibeetle_larva",
-    "Horse-fly": "gadfly_little",
+    "Horse-fly": "gadfly_little",  # 马蝇（牛虻是 gadfly）
     "River mussel meat": "unio_crassus",
     "Roach": "c_roach_lf",
     "Small fillet - Saithe": "fb_lf_saida",

@@ -245,6 +245,9 @@ func (s *Server) resumeFishingState(st *FishState) {
 	if sess == nil {
 		return
 	}
+	// 饵效控速惰性补算：恢复的杆没有节奏因子（仅进程内），补一次防止
+	// 重启后差饵按无节奏控制判鱼。
+	s.ensurePaceState(sess, st)
 
 	st.mu.Lock()
 	resumed := st.persist.sessionID != sess.ID

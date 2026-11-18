@@ -147,6 +147,9 @@ func (s *Server) reloadFishEcologyCache(ctx context.Context) error {
 	s.fishEcologyCache = cache
 	s.fishEcologyCacheLoaded = true
 	s.fishEcologyMu.Unlock()
+	// 生态全量重载后，节奏通路的名册食性聚合必须同步作废，否则旧聚合
+	// 活过 TTL（PR #531 审查 P2-4）。
+	s.invalidatePaceDietCache()
 	return nil
 }
 
@@ -158,6 +161,7 @@ func (s *Server) invalidateFishEcologyCache() {
 	s.fishEcologyCache = nil
 	s.fishEcologyCacheLoaded = false
 	s.fishEcologyMu.Unlock()
+	s.invalidatePaceDietCache()
 }
 
 func boolInt(v bool) int {
