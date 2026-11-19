@@ -36,7 +36,7 @@ func TestFishDistributionRegionsTimeAndActivity(t *testing.T) {
 	if !reflect.DeepEqual(w, weights(a, now.Add(time.Second))) {
 		t.Fatal("school must stay stable within its refresh period")
 	}
-	if reflect.DeepEqual(w, weights(fishArea("map-a", c), now)) || reflect.DeepEqual(w, weights(a, now.Add(600*time.Second))) {
+	if reflect.DeepEqual(w, weights(fishArea("map-a", c), now)) || reflect.DeepEqual(w, weights(a, now.Add(distributionPeriodRealHours*time.Hour))) {
 		t.Fatal("regions and refresh periods must change schools")
 	}
 	if activityMultiplier("ruffe", 23) <= activityMultiplier("ruffe", 12) || activityMultiplier("perch", 23) >= activityMultiplier("perch", 12) {
@@ -47,8 +47,8 @@ func TestFishDistributionRegionsTimeAndActivity(t *testing.T) {
 		t.Fatal("unknown activity must be neutral")
 	}
 	zero, positive := false, false
-	for i := 0; i < 40; i++ {
-		v := distributionMultiplier(a, "perch", now.Add(time.Duration(i)*600*time.Second))
+	for i := 0; i < 200; i++ {
+		v := distributionMultiplier(a, "perch", now.Add(time.Duration(i)*distributionPeriodRealHours*time.Hour))
 		zero = zero || v == 0
 		positive = positive || v > 0
 	}

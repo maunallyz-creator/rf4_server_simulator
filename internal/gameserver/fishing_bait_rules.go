@@ -547,7 +547,7 @@ func (s *Server) filterFishBaitSet(loc string, ids []string, keys []string, weig
 	}
 	outKeys := make([]string, 0, len(keys))
 	outWeights := make([]float64, 0, len(keys))
-	period := (now.Unix() - worldDayEpochUnix) / (4 * realSecPerGameHour)
+	period := (now.Unix() - worldDayEpochUnix) / (distributionPeriodRealHours * 3600)
 	// 阈值与总开关按一次判鱼读取，循环内不再重复取 tunable。
 	// bait_share_strong/medium/tail 任一 <=0 时回到旧行为（>0 即满分）。
 	strong := s.tunableF("bait_share_strong", 5)

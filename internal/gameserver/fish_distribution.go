@@ -6,6 +6,11 @@ import (
 	"time"
 )
 
+// distributionPeriodRealHours 是鱼群聚散（以及饵效抖动）的重排周期，单位是
+// 真实小时：每 24 真实小时（一天）重排一次。周期内同一格子同一鱼种的结果
+// 固定，不因玩家移动或换饵重抽。
+const distributionPeriodRealHours = 24
+
 // 区域以玩家世界位置划分；缺位置时使用客户端场景与钓点编号。
 func fishArea(loc string, c fishRollContext) string {
 	if c.hasPos && !math.IsNaN(c.x) && !math.IsNaN(c.z) && !math.IsInf(c.x, 0) && !math.IsInf(c.z, 0) {
@@ -34,8 +39,7 @@ func activityMultiplier(species string, hour int64) float64 {
 
 func distributionMultiplier(area, species string, now time.Time) float64 {
 	_, hour := worldDayAndHour(now.Unix())
-	// 每四个游戏小时重新分布；同区域同鱼种共享结果，不因玩家或换饵重抽。
-	period := (now.Unix() - worldDayEpochUnix) / (4 * realSecPerGameHour)
+	period := (now.Unix() - worldDayEpochUnix) / (distributionPeriodRealHours * 3600)
 	v := fishVariation(fmt.Sprintf("%s/%s/%d", area, species, period))
 	// 鱼群聚散只留一档「明显不来」（v<0.10，约十分之一的格子），其余时刻
 	// 只做 0.64~1.45 的强弱区分。原来的 v<0.30 + 0.15+3.85v² 会让同一期

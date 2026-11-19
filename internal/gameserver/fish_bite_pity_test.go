@@ -13,11 +13,11 @@ func TestPityDistributionFloor(t *testing.T) {
 	s, _ := seedBaitRuleTest(t)
 	at := time.Unix(1794643000, 0)
 	area := "rules-test/1/1"
-	// 找一个该格散布为 0 的鱼种×时刻组合（散布确定性，约三成组合为 0）。
-	// 单点可能恰好全非零，从固定起点按小时扫 64 步，可复现且不再跳过。
+	// 找一个该格散布为 0 的鱼种×时刻组合（散布确定性，约一成组合为 0）。
+	// 散布周期是 24 真实小时，所以按周期步进扫描，可复现且不再跳过。
 	var zeroKey string
 	for step := 0; step < 64 && zeroKey == ""; step++ {
-		ts := at.Add(time.Duration(step) * time.Hour)
+		ts := at.Add(time.Duration(step) * distributionPeriodRealHours * time.Hour)
 		for _, key := range []string{"c.roach", "frog"} {
 			if distributionMultiplier(area, key, ts) == 0 {
 				at, zeroKey = ts, key

@@ -45,7 +45,7 @@ func TestFishBaitPreferenceAlternateCombinationAndChange(t *testing.T) {
 	if weight([]string{"missing"}, now) != 0 || weight(nil, now) != 0 {
 		t.Fatal("invalid or absent bait must not be scored")
 	}
-	if favorite == weight([]string{"rule_worm"}, now.Add(600*time.Second)) {
+	if favorite == weight([]string{"rule_worm"}, now.Add(distributionPeriodRealHours*time.Hour)) {
 		t.Fatal("bait preference did not vary over game time")
 	}
 	setBaitRuleSwitch(t, s, "1")
