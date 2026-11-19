@@ -417,14 +417,30 @@ func dielCurveWeights(raw string) []float64 {
 // 峰值段 1.0、次优段按观测比例衰减、非活跃段最低 0.08（接近不出但不置零）。
 func fishDielWeight(profile fishEcologyProfile, hour int64) float64 {
 	bit := int(fishActivityForHour(hour))
+	weight := 1.0
 	if curve := dielCurveWeights(profile.DielCurve); curve != nil {
-		return clampFloat(curve[bit], fishDielCurveMin, 1)
+		weight = clampFloat(curve[bit], fishDielCurveMin, 1)
+	} else if profile.DielMask&(1<<uint(bit)) == 0 {
+		weight = .35
 	}
-	if profile.DielMask&(1<<uint(bit)) != 0 {
-		return 1
+	// 夜行鱼的白昼段（9-16 点）设硬上限：社区渔获时刻样本少时，鳗鱼这类
+	// 夜行鱼的曲线会被抬到 0.47，白天仍能出鱼，与「白天基本不出」的手感不符。
+	// 取 0.05，比江鳕实测昼段占比 10.2% 更保守，保证白天几乎不咬。
+	if bit == 2 && strictNocturnalFish[profile.FishKey] {
+		weight = math.Min(weight, fishDielNocturnalDayCap)
 	}
-	return .35
+	return weight
 }
+
+// strictNocturnalFish 是白天基本不咬的夜行鱼种（与分布层的夜行名单不同：
+// 梅花鲈这类「白天也出、夜里更多」的鱼不在此列）。
+var strictNocturnalFish = map[string]bool{
+	"eel": true, "burbot": true, "w_catfish": true, "w_catfish_a": true,
+	"bullhead_syb": true, "ch_catfish": true, "fhcatfish": true,
+}
+
+// fishDielNocturnalDayCap 是夜行鱼昼段权重的硬上限。
+const fishDielNocturnalDayCap = 0.05
 
 func fishEcologyJSONMap(raw string) map[string]float64 {
 	var m map[string]float64
