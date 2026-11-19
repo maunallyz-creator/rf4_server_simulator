@@ -18,4 +18,5 @@ CREATE TABLE IF NOT EXISTS fish_weight_base(
 -- 首次建立基线：此时 fish_weight_override 刚被 00071 重置为官方统计值。
 INSERT OR REPLACE INTO fish_weight_base(loc, fish_key, weight, updated_ts, updated_by)
 SELECT loc, fish_key, weight, updated_ts, COALESCE(updated_by, '')
-  FROM fish_weight_override;
+  FROM fish_weight_override
+ WHERE updated_by = 'rf4info';
