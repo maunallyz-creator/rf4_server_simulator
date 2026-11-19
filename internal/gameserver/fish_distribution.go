@@ -11,6 +11,25 @@ import (
 // 固定，不因玩家移动或换饵重抽。
 const distributionPeriodRealHours = 24
 
+// 鱼群聚散里的「今天这条鱼完全不出现」只留给少数鱼：图内权重份额越高的鱼
+// 越不容易被刷掉，份额达到 distributionAlwaysPresentShare 的鱼永不缺席。
+// 否则会出现「这张图的主打鱼整整一天一条都钓不到」，与基础权重的语义矛盾。
+const (
+	distributionBaseZeroFloor      = 0.10
+	distributionAlwaysPresentShare = 0.05
+)
+
+// distributionZeroFloor 返回该份额对应的缺席判定线；份额够高时返回 0。
+func distributionZeroFloor(share float64) float64 {
+	if share >= distributionAlwaysPresentShare {
+		return 0
+	}
+	if share <= 0 {
+		return distributionBaseZeroFloor
+	}
+	return distributionBaseZeroFloor * (1 - share/distributionAlwaysPresentShare)
+}
+
 // 区域以玩家世界位置划分；缺位置时使用客户端场景与钓点编号。
 func fishArea(loc string, c fishRollContext) string {
 	if c.hasPos && !math.IsNaN(c.x) && !math.IsNaN(c.z) && !math.IsInf(c.x, 0) && !math.IsInf(c.z, 0) {
@@ -37,7 +56,7 @@ func activityMultiplier(species string, hour int64) float64 {
 	return 1
 }
 
-func distributionMultiplier(area, species string, now time.Time) float64 {
+func distributionMultiplier(area, species string, now time.Time, share float64) float64 {
 	_, hour := worldDayAndHour(now.Unix())
 	period := (now.Unix() - worldDayEpochUnix) / (distributionPeriodRealHours * 3600)
 	v := fishVariation(fmt.Sprintf("%s/%s/%d", area, species, period))
@@ -46,7 +65,7 @@ func distributionMultiplier(area, species string, now time.Time) float64 {
 	// 三成鱼种直接归零、非零跨度 26 倍，实测单图单期有效鱼种中位只有 7.5、
 	// 单饵最高占比 25.5%（90 分位 42%），体感就是「一款饵只上个别几种鱼」。
 	// 改后同口径 10.2 / 19.8%（90 分位 31%）。
-	if v < 0.10 {
+	if v < distributionZeroFloor(share) {
 		return 0
 	}
 	return (0.55 + 0.90*v) * activityMultiplier(species, hour)
@@ -54,8 +73,18 @@ func distributionMultiplier(area, species string, now time.Time) float64 {
 
 func applyFishDistribution(loc string, keys []string, weights []float64, c fishRollContext) {
 	area := fishArea(loc, c)
+	total := 0.0
+	for _, w := range weights {
+		if w > 0 {
+			total += w
+		}
+	}
 	for i, key := range keys {
-		m := distributionMultiplier(area, key, c.now)
+		share := 0.0
+		if total > 0 && weights[i] > 0 {
+			share = weights[i] / total
+		}
+		m := distributionMultiplier(area, key, c.now, share)
 		// 保底杂口：本时段本格散布为 0 的鱼保底 0.15，避免连续空杆死寂；
 		// 仅 pityEnv 重掷路径生效，正常判鱼不动。
 		if m == 0 && c.pityEnv {

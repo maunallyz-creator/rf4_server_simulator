@@ -28,7 +28,7 @@ func TestFishDistributionRegionsTimeAndActivity(t *testing.T) {
 	weights := func(area string, at time.Time) []float64 {
 		var out []float64
 		for _, key := range keys {
-			out = append(out, distributionMultiplier(area, key, at))
+			out = append(out, distributionMultiplier(area, key, at, 0))
 		}
 		return out
 	}
@@ -48,7 +48,7 @@ func TestFishDistributionRegionsTimeAndActivity(t *testing.T) {
 	}
 	zero, positive := false, false
 	for i := 0; i < 200; i++ {
-		v := distributionMultiplier(a, "perch", now.Add(time.Duration(i)*distributionPeriodRealHours*time.Hour))
+		v := distributionMultiplier(a, "perch", now.Add(time.Duration(i)*distributionPeriodRealHours*time.Hour), 0)
 		zero = zero || v == 0
 		positive = positive || v > 0
 	}

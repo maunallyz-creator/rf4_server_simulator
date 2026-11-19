@@ -62,7 +62,7 @@ func TestFishQueryPaperMapClipsBeforeRanking(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			fullFactors, err := full.distributionFactors(t.Context(), "target")
+			fullFactors, err := full.distributionFactors(t.Context(), "target", 0)
 			if err != nil {
 				t.Fatal(err)
 			}

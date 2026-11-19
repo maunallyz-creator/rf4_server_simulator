@@ -19,7 +19,8 @@ func TestPityDistributionFloor(t *testing.T) {
 	for step := 0; step < 64 && zeroKey == ""; step++ {
 		ts := at.Add(time.Duration(step) * distributionPeriodRealHours * time.Hour)
 		for _, key := range []string{"c.roach", "frog"} {
-			if distributionMultiplier(area, key, ts) == 0 {
+			// 份额 1/101：低于「永不缺席」阈值，仍可能被刷掉。
+			if distributionMultiplier(area, key, ts, 1.0/101) == 0 {
 				at, zeroKey = ts, key
 				break
 			}
@@ -28,14 +29,15 @@ func TestPityDistributionFloor(t *testing.T) {
 	if zeroKey == "" {
 		t.Fatal("64 小时×2 鱼种内无散布为 0 的组合：散布模型已变，需修本测试")
 	}
-	base := []string{zeroKey}
-	wNormal := []float64{10}
+	// 同杆里另一款饵承担绝大部分权重，目标鱼份额 1/101，才会命中缺席判定线。
+	base := []string{zeroKey, "c.roach"}
+	wNormal := []float64{10, 1000}
 	applyFishDistribution("rules-test", base, wNormal, fishRollContext{x: 50, z: 50, hasPos: true, now: at})
 	if wNormal[0] != 0 {
 		t.Fatalf("正常路径散布为 0 时权重应为 0, got %v", wNormal[0])
 	}
-	wPity := []float64{10}
-	applyFishDistribution("rules-test", []string{zeroKey}, wPity, fishRollContext{x: 50, z: 50, hasPos: true, now: at, pityEnv: true})
+	wPity := []float64{10, 1000}
+	applyFishDistribution("rules-test", []string{zeroKey, "c.roach"}, wPity, fishRollContext{x: 50, z: 50, hasPos: true, now: at, pityEnv: true})
 	if wPity[0] != 10*0.15 {
 		t.Fatalf("pityEnv 散布 0 应保底 ×0.15, got %v", wPity[0])
 	}
