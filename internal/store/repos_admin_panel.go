@@ -583,6 +583,10 @@ func (d *DB) GetAdminFishConfig(ctx context.Context, loc string) (*AdminFishConf
 	if err != nil {
 		return nil, err
 	}
+	base, err := d.FishWeightBase(ctx, loc)
+	if err != nil {
+		return nil, err
+	}
 	// 鱼饵规则覆盖：钓场页要展示每个鱼种的轮换配置与当前生效组。
 	// 读失败不阻断鱼口编辑（鱼饵规则是附加信息），降级为无轮换。
 	baitOvs := map[string]FishBaitOverride{}
@@ -615,6 +619,9 @@ func (d *DB) GetAdminFishConfig(ctx context.Context, loc string) (*AdminFishConf
 			name = r.FishKey
 		}
 		row := FishConfigRow{FishKey: r.FishKey, NameZh: name, BaseWeight: r.Catches, Weight: r.Catches, Enabled: true, WeightSource: "static"}
+		if bw, ok := base[r.FishKey]; ok {
+			row.BaseWeight, row.WeightSource = bw.Weight, "official"
+		}
 		if ov, ok := ovs[r.FishKey]; ok {
 			row.Weight, row.Enabled, row.HasOverride = ov.Weight, ov.Enabled, true
 			row.WeightSource = weightSourceOf(ov)
@@ -634,6 +641,9 @@ func (d *DB) GetAdminFishConfig(ctx context.Context, loc string) (*AdminFishConf
 		row := FishConfigRow{
 			FishKey: key, NameZh: name, BaseWeight: 0, Weight: ov.Weight,
 			Enabled: ov.Enabled, HasOverride: true, WeightSource: weightSourceOf(ov),
+		}
+		if bw, ok := base[key]; ok {
+			row.BaseWeight = bw.Weight
 		}
 		applyBaitRotation(&row, baitOvs[name])
 		cfg.Fish = append(cfg.Fish, row)
@@ -734,6 +744,27 @@ func (d *DB) ResetAdminFishConfig(ctx context.Context, loc string) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// FishWeightBase 读取某水域的官方统计基线权重（迁移 00072 建立，不受人工覆盖影响）。
+func (d *DB) FishWeightBase(ctx context.Context, loc string) (map[string]FishWeightOverride, error) {
+	rows, err := d.SQL.QueryContext(ctx, `
+		SELECT loc,fish_key,weight,1,COALESCE(updated_by,'') FROM fish_weight_base WHERE loc=?`, loc)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]FishWeightOverride{}
+	for rows.Next() {
+		var v FishWeightOverride
+		var enabled int
+		if err := rows.Scan(&v.Loc, &v.FishKey, &v.Weight, &enabled, &v.UpdatedBy); err != nil {
+			return nil, err
+		}
+		v.Enabled = enabled != 0
+		out[v.FishKey] = v
+	}
+	return out, rows.Err()
 }
 
 func (d *DB) FishWeightOverrides(ctx context.Context, loc string) (map[string]FishWeightOverride, error) {

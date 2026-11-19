@@ -93,6 +93,32 @@ func TestFishWeightOverrideNormalizedPerWater(t *testing.T) {
 	}
 }
 
+// 基础权重表必须与覆盖表同形（迁移 00072 首次建立时两者一致）。
+func TestFishWeightBaseMatchesOverride(t *testing.T) {
+	db := openFishWeightTestDB(t)
+	ctx := context.Background()
+	var baseRows, ovRows int
+	if err := db.SQL.QueryRowContext(ctx, `SELECT COUNT(*) FROM fish_weight_base`).Scan(&baseRows); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SQL.QueryRowContext(ctx, `SELECT COUNT(*) FROM fish_weight_override`).Scan(&ovRows); err != nil {
+		t.Fatal(err)
+	}
+	if baseRows != ovRows {
+		t.Fatalf("基础权重行=%d，覆盖行=%d", baseRows, ovRows)
+	}
+	var mismatch int
+	if err := db.SQL.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM fish_weight_override o
+		JOIN fish_weight_base b ON b.loc=o.loc AND b.fish_key=o.fish_key
+		WHERE b.weight <> o.weight`).Scan(&mismatch); err != nil {
+		t.Fatal(err)
+	}
+	if mismatch != 0 {
+		t.Fatalf("有 %d 条基础权重与初始覆盖值不一致", mismatch)
+	}
+}
+
 // 迁移必须可重复执行：行数与数值不变。
 func TestFishWeightOverrideMigrationIsRepeatable(t *testing.T) {
 	db := openFishWeightTestDB(t)
