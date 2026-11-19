@@ -82,6 +82,9 @@ type FishConfigRow struct {
 	Weight      float64 `json:"weight"`
 	Enabled     bool    `json:"enabled"`
 	HasOverride bool    `json:"has_override"`
+	// WeightSource 标记该行权重的来源：official=官方周档统计，manual=后台人工覆盖，
+	// static=未覆盖（用鱼库静态渔获数）。
+	WeightSource string `json:"weight_source"`
 
 	// 鱼饵规则覆盖带来的轮换信息（来自 fish_bait_override）。
 	// 钓场鱼口页需要看出"这个鱼种配了轮换、当前生效哪一组"，
@@ -105,10 +108,11 @@ type FishBiteSetting struct {
 }
 
 type FishWeightOverride struct {
-	Loc     string
-	FishKey string
-	Weight  float64
-	Enabled bool
+	Loc       string
+	FishKey   string
+	Weight    float64
+	Enabled   bool
+	UpdatedBy string
 }
 
 type AdminFishConfig struct {
@@ -610,9 +614,10 @@ func (d *DB) GetAdminFishConfig(ctx context.Context, loc string) (*AdminFishConf
 		if name == "" {
 			name = r.FishKey
 		}
-		row := FishConfigRow{FishKey: r.FishKey, NameZh: name, BaseWeight: r.Catches, Weight: r.Catches, Enabled: true}
+		row := FishConfigRow{FishKey: r.FishKey, NameZh: name, BaseWeight: r.Catches, Weight: r.Catches, Enabled: true, WeightSource: "static"}
 		if ov, ok := ovs[r.FishKey]; ok {
 			row.Weight, row.Enabled, row.HasOverride = ov.Weight, ov.Enabled, true
+			row.WeightSource = weightSourceOf(ov)
 		}
 		applyBaitRotation(&row, baitOvs[name])
 		cfg.Fish = append(cfg.Fish, row)
@@ -628,7 +633,7 @@ func (d *DB) GetAdminFishConfig(ctx context.Context, loc string) (*AdminFishConf
 		}
 		row := FishConfigRow{
 			FishKey: key, NameZh: name, BaseWeight: 0, Weight: ov.Weight,
-			Enabled: ov.Enabled, HasOverride: true,
+			Enabled: ov.Enabled, HasOverride: true, WeightSource: weightSourceOf(ov),
 		}
 		applyBaitRotation(&row, baitOvs[name])
 		cfg.Fish = append(cfg.Fish, row)
@@ -733,7 +738,7 @@ func (d *DB) ResetAdminFishConfig(ctx context.Context, loc string) error {
 
 func (d *DB) FishWeightOverrides(ctx context.Context, loc string) (map[string]FishWeightOverride, error) {
 	rows, err := d.SQL.QueryContext(ctx, `
-		SELECT loc,fish_key,weight,enabled FROM fish_weight_override WHERE loc=?`, loc)
+		SELECT loc,fish_key,weight,enabled,COALESCE(updated_by,'') FROM fish_weight_override WHERE loc=?`, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -742,13 +747,22 @@ func (d *DB) FishWeightOverrides(ctx context.Context, loc string) (map[string]Fi
 	for rows.Next() {
 		var v FishWeightOverride
 		var enabled int
-		if err := rows.Scan(&v.Loc, &v.FishKey, &v.Weight, &enabled); err != nil {
+		if err := rows.Scan(&v.Loc, &v.FishKey, &v.Weight, &enabled, &v.UpdatedBy); err != nil {
 			return nil, err
 		}
 		v.Enabled = enabled != 0
 		out[v.FishKey] = v
 	}
 	return out, rows.Err()
+}
+
+// weightSourceOf 把覆盖行的写入者翻译成前端能直接展示的来源标签。
+// 迁移写入的行 updated_by='rf4info'，后台手改的行是管理员账号。
+func weightSourceOf(ov FishWeightOverride) string {
+	if ov.UpdatedBy == "rf4info" {
+		return "official"
+	}
+	return "manual"
 }
 
 func boolInt(v bool) int64 {

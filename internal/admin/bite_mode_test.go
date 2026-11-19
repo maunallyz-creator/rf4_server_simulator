@@ -61,7 +61,7 @@ func TestBiteModeEndpoint(t *testing.T) {
 	if code, out := call("GET", "/api/fish/bite_mode", ""); code != 200 || out["mode"] != "legacy" {
 		t.Fatalf("initial mode: %d %v", code, out)
 	}
-	// 切到真实鱼汛：五个开关全部为 1。
+	// 切到官方鱼汛：五个开关全部为 1。
 	if code, out := call("POST", "/api/fish/bite_mode", `{"mode":"realistic"}`); code != 200 || out["mode"] != "realistic" {
 		t.Fatalf("set realistic: %d %v", code, out)
 	}
