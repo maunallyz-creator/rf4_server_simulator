@@ -37,10 +37,15 @@ func distributionMultiplier(area, species string, now time.Time) float64 {
 	// 每四个游戏小时重新分布；同区域同鱼种共享结果，不因玩家或换饵重抽。
 	period := (now.Unix() - worldDayEpochUnix) / (4 * realSecPerGameHour)
 	v := fishVariation(fmt.Sprintf("%s/%s/%d", area, species, period))
-	if v < 0.3 {
+	// 鱼群聚散只留一档「明显不来」（v<0.10，约十分之一的格子），其余时刻
+	// 只做 0.64~1.45 的强弱区分。原来的 v<0.30 + 0.15+3.85v² 会让同一期
+	// 三成鱼种直接归零、非零跨度 26 倍，实测单图单期有效鱼种中位只有 7.5、
+	// 单饵最高占比 25.5%（90 分位 42%），体感就是「一款饵只上个别几种鱼」。
+	// 改后同口径 10.2 / 19.8%（90 分位 31%）。
+	if v < 0.10 {
 		return 0
 	}
-	return (0.15 + 3.85*v*v) * activityMultiplier(species, hour)
+	return (0.55 + 0.90*v) * activityMultiplier(species, hour)
 }
 
 func applyFishDistribution(loc string, keys []string, weights []float64, c fishRollContext) {
