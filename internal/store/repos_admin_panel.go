@@ -82,7 +82,7 @@ type FishConfigRow struct {
 	Weight      float64 `json:"weight"`
 	Enabled     bool    `json:"enabled"`
 	HasOverride bool    `json:"has_override"`
-	// WeightSource 标记该行权重的来源：official=官方周档统计，manual=后台人工覆盖，
+	// WeightSource 标记该行权重的来源：official=rf4info 周档统计，manual=后台人工覆盖，
 	// static=未覆盖（用鱼库静态渔获数）。
 	WeightSource string `json:"weight_source"`
 
@@ -620,7 +620,7 @@ func (d *DB) GetAdminFishConfig(ctx context.Context, loc string) (*AdminFishConf
 		}
 		row := FishConfigRow{FishKey: r.FishKey, NameZh: name, BaseWeight: r.Catches, Weight: r.Catches, Enabled: true, WeightSource: "static"}
 		if bw, ok := base[r.FishKey]; ok {
-			row.BaseWeight, row.WeightSource = bw.Weight, "official"
+			row.BaseWeight = bw.Weight
 		}
 		if ov, ok := ovs[r.FishKey]; ok {
 			row.Weight, row.Enabled, row.HasOverride = ov.Weight, ov.Enabled, true
@@ -720,7 +720,9 @@ func (d *DB) SaveAdminFishConfig(ctx context.Context, in FishConfigSave, updated
 			VALUES(?,?,?,?,?,?)
 			ON CONFLICT(loc,fish_key) DO UPDATE SET
 				weight=excluded.weight, enabled=excluded.enabled,
-				updated_ts=excluded.updated_ts, updated_by=excluded.updated_by`,
+				updated_ts=excluded.updated_ts, updated_by=excluded.updated_by
+			WHERE abs(fish_weight_override.weight-excluded.weight) > 1e-9
+			   OR fish_weight_override.enabled <> excluded.enabled`,
 			in.Area, f.FishKey, f.Weight, boolInt(f.Enabled), now, updatedBy); err != nil {
 			return err
 		}
@@ -740,13 +742,22 @@ func (d *DB) ResetAdminFishConfig(ctx context.Context, loc string) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM fish_weight_override WHERE loc=?`, loc); err != nil {
 		return err
 	}
+	// 有统计基线时，「恢复默认」回到基线，而不是退回静态渔获数；旧库没有基线才保留静态回退。
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO fish_weight_override(loc,fish_key,weight,enabled,updated_ts,updated_by)
+		SELECT b.loc,b.fish_key,b.weight,1,b.updated_ts,'rf4info'
+		  FROM fish_weight_base b
+		  JOIN loc_wiki_fish w ON w.loc=b.loc AND w.fish_key=b.fish_key
+		 WHERE b.loc=?`, loc); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM fish_bite_setting WHERE loc=?`, loc); err != nil {
 		return err
 	}
 	return tx.Commit()
 }
 
-// FishWeightBase 读取某水域的官方统计基线权重（迁移 00072 建立，不受人工覆盖影响）。
+// FishWeightBase 读取某水域的 rf4info 周档统计基线权重（迁移 00072 建立，不受人工覆盖影响）。
 func (d *DB) FishWeightBase(ctx context.Context, loc string) (map[string]FishWeightOverride, error) {
 	rows, err := d.SQL.QueryContext(ctx, `
 		SELECT loc,fish_key,weight,1,COALESCE(updated_by,'') FROM fish_weight_base WHERE loc=?`, loc)

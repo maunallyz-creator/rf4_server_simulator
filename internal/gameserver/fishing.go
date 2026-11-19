@@ -1483,7 +1483,7 @@ func (s *Server) rollFishFromDBWithRules(loc, bait string, gearCapKg float64, bo
 			sample := func() float64 {
 				return float64(s.sampleWeightDB(cctx, key, s.baitWeightModeForRoll(key, c.baits, c), scale, capG, c))
 			}
-			w = int64(applyTrophyLuck(sample(), bonus.TrophyLuck, sample))
+			w = int64(s.applyRollTrophyLuck(sample(), bonus.TrophyLuck, sample))
 		}
 		if w == 0 {
 			for i, candidate := range keys {
@@ -1738,13 +1738,10 @@ func (s *Server) gradeRatioModel(l cachedGradeLines, modeMult, scale, capG float
 		3: s.tunableF("grade_pct_trophy", 9),
 		4: s.tunableF("grade_pct_super", 0.5),
 	}
-	// 饵效命中：把一部分"合格"份额挪给奖杯，模拟大饵更招大鱼。
-	if modeMult > 1.0 {
-		shift := math.Min(w[2]*0.5, w[2]*(modeMult-1)*0.5)
-		w[2] -= shift
-		w[3] += shift
-	}
-	usable := make([]gradeRatioBand, 0, len(bands))
+	usable := make([]gradeRatioBand, 0, len(bands)) // 档位比例是后台配置的绝对占比：饵效倍率只影响鱼种和体重分布，
+	// 不得再把“合格”份额挪给“奖杯”，否则实际上星率会高于面板显示值。
+	_ = modeMult
+
 	wts := make([]float64, 0, len(bands))
 	total := 0.0
 	for _, b := range bands {
@@ -1965,7 +1962,7 @@ func (s *Server) rollFishPoolsWithRules(loc string, gearCapKg float64, bonus fis
 		upper = math.Min(upper, capG/scale)
 	}
 	sample := func() float64 { return triangular(minG, maxG, mode, upper) }
-	w := applyTrophyLuck(sample(), bonus.TrophyLuck, sample)
+	w := s.applyRollTrophyLuck(sample(), bonus.TrophyLuck, sample)
 	if w == 0 {
 		return nil
 	}
@@ -2007,6 +2004,15 @@ func applyTrophyLuck(weight, luck float64, sample func() float64) float64 {
 		return math.Max(weight, sample())
 	}
 	return weight
+}
+
+// applyRollTrophyLuck 统一按发鱼模式决定奖杯幸运是否参与；档位比例是总开关，
+// 开启后任何旧加成都不能改写配置的四档份额。
+func (s *Server) applyRollTrophyLuck(weight, luck float64, sample func() float64) float64 {
+	if s.gradeRatioEnabled() {
+		return weight
+	}
+	return applyTrophyLuck(weight, luck, sample)
 }
 
 func triangular(min, max, mode float64, upperBounds ...float64) float64 {

@@ -2,8 +2,8 @@ package gameserver
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
-	"time"
 )
 
 func TestFishDielCurveWeightsParsing(t *testing.T) {
@@ -16,9 +16,10 @@ func TestFishDielCurveWeightsParsing(t *testing.T) {
 	if w := dielCurveWeights("not json"); w != nil {
 		t.Fatalf("非法 JSON 应返回 nil，得到 %v", w)
 	}
-	w := dielCurveWeights("[1,0.4,0.35,0.6]")
-	if len(w) != 4 || w[0] != 1 || w[1] != 0.4 || w[3] != 0.6 {
-		t.Fatalf("四段曲线解析错误: %v", w)
+	w := dielCurveWeights("[-1,0.4,0.35,1.2]")
+	want := []float64{0, 0.4, 0.35, 1}
+	if !reflect.DeepEqual(w, want) {
+		t.Fatalf("四段曲线解析或钳制错误: 得到 %v，期望 %v", w, want)
 	}
 }
 
@@ -42,6 +43,32 @@ func TestFishDielWeightUsesCurveAsWindow(t *testing.T) {
 	}
 }
 
+func TestFishDielWeightSegmentBoundaries(t *testing.T) {
+	p := fishEcologyProfile{DielCurve: "[0.1,0.2,0.3,0.4]"}
+	cases := []struct {
+		hour int64
+		want float64
+	}{
+		{-1, 0.1}, // 归一化到 23 点，夜
+		{0, 0.1},
+		{4, 0.1},
+		{5, 0.2}, // 晨
+		{8, 0.2},
+		{9, 0.3}, // 昼
+		{15, 0.3},
+		{16, 0.4}, // 昏
+		{19, 0.4},
+		{20, 0.1}, // 夜
+		{23, 0.1},
+		{24, 0.1}, // 跨日归一化
+	}
+	for _, c := range cases {
+		if got := fishDielWeight(p, c.hour); got != c.want {
+			t.Fatalf("hour=%d 期望 %.2f 实得 %.2f", c.hour, c.want, got)
+		}
+	}
+}
+
 func TestFishDielWeightFallsBackToMask(t *testing.T) {
 	// 无曲线时仍按位图：命中 1.0，未命中 0.35。
 	day := fishEcologyProfile{DielMask: 1 << 2} // 只允许白天
@@ -53,45 +80,67 @@ func TestFishDielWeightFallsBackToMask(t *testing.T) {
 	}
 }
 
-func TestFishDielCurveIsMonotonicUnderPeak(t *testing.T) {
-	// 曲线峰值必须是 1，否则「窗口期」会整体压低该鱼。
-	var raw []fishEcologyProfile
+func TestFishDielCurveAssetMatchesDerivedMaskAndSources(t *testing.T) {
+	type assetProfile struct {
+		FishKey    string `json:"fish_key"`
+		DielMask   int64  `json:"diel_mask"`
+		DielCurve  string `json:"diel_curve"`
+		DielSource string `json:"diel_source"`
+	}
+	var raw []assetProfile
 	if err := json.Unmarshal(fishEcologyDefsJSON, &raw); err != nil {
 		t.Fatalf("加载生态基线失败: %v", err)
 	}
-	seen := 0
+	if len(raw) != 253 {
+		t.Fatalf("生态资产=%d，期望 253", len(raw))
+	}
+
+	sources := map[string]int{}
 	for _, p := range raw {
-		key := p.FishKey
-		w := dielCurveWeights(p.DielCurve)
-		if w == nil {
-			continue
+		if p.DielSource == "" {
+			t.Fatalf("%s 缺少 diel_source", p.FishKey)
 		}
-		seen++
+		sources[p.DielSource]++
+		w := dielCurveWeights(p.DielCurve)
+		if len(w) != 4 {
+			t.Fatalf("%s 曲线无法解析: %q", p.FishKey, p.DielCurve)
+		}
+		var rawWeights []float64
+		if err := json.Unmarshal([]byte(p.DielCurve), &rawWeights); err != nil {
+			t.Fatalf("%s 原始曲线无法解析: %v", p.FishKey, err)
+		}
+		expectedMask := int64(0)
 		peak := 0.0
-		for _, v := range w {
+		for i, v := range rawWeights {
+			if v < fishDielCurveMin || v > 1 {
+				t.Fatalf("%s 曲线越界: %v", p.FishKey, rawWeights)
+			}
 			if v > peak {
 				peak = v
 			}
-			if v < 0 || v > 1 {
-				t.Fatalf("%s 曲线越界: %v", key, w)
+			if v >= 0.5 {
+				expectedMask |= 1 << uint(i)
 			}
 		}
-		if peak < 0.99 {
-			t.Fatalf("%s 曲线峰值 %.2f 未归一到 1: %v", key, peak, w)
+		if peak < 0.999 {
+			t.Fatalf("%s 曲线峰值 %.2f 未归一到 1: %v", p.FishKey, peak, rawWeights)
+		}
+		if p.DielMask != expectedMask {
+			t.Fatalf("%s diel_mask=%d，按曲线应为 %d: %v", p.FishKey, p.DielMask, expectedMask, rawWeights)
 		}
 	}
-	if seen < 200 {
-		t.Fatalf("带曲线的鱼种过少: %d", seen)
-	}
-}
 
-func TestFishDielCurveCoversGlobalAndLocalHours(t *testing.T) {
-	// 曲线按游戏小时取段，跨日边界必须一致（0 点与 24 点同段）。
-	p := fishEcologyProfile{DielCurve: "[0.5,1,1,0.8]"}
-	if a, b := fishDielWeight(p, 0), fishDielWeight(p, 24); a != b {
-		t.Fatalf("0 点与 24 点应同权重，得到 %.2f vs %.2f", a, b)
+	wantSources := map[string]int{
+		"rf4info":              120,
+		"gamekee-avg:high/low": 1,
+		"gamekee-avg:low/high": 4,
+		"gamekee-avg:low/low":  13,
+		"gamekee-avg:mid/high": 9,
+		"gamekee-avg:mid/low":  15,
+		"gamekee-avg:mid/mid":  69,
+		"global-avg":           22,
 	}
-	if got := fishDielWeight(p, time.Now().Unix()%24); got <= 0 || got > 1 {
-		t.Fatalf("任意小时权重越界: %.2f", got)
+	if !reflect.DeepEqual(sources, wantSources) {
+		t.Fatalf("diel_source 覆盖不符: 得到 %v，期望 %v", sources, wantSources)
 	}
 }

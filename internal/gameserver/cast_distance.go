@@ -682,8 +682,12 @@ func (s *Server) castDistanceForRig(ctx context.Context, uid int64, rodGUID stri
 		p.DistanceM = math.Min(p.DistanceM, p.LineLimitM)
 	}
 	if clip, ok := s.savedReelClipM(ctx, rodGUID); ok && clip > 0 {
+		// 卡线不折进 DistanceM：158.f1 是客户端力度条量程，必须保持全量程，
+		// 贴卡由客户端按竿树 153.f5 截停（官方语义：满格=物理满距，卡线是
+		// 机械止线）。折进量程会把力度条缩成 0..卡米，小于卡米的力度永远
+		// 贴不到卡米数（2026-11-19 实机实证：卡 8 时 requested 5.88~7.64
+		// 全部按比例缩水）。只作为 ClipLimitM 元数据供 hCast 收口与日志。
 		p.ClipLimitM = float64(clip)
-		p.DistanceM = math.Min(p.DistanceM, p.ClipLimitM)
 	}
 	if p.DistanceM < 0.5 {
 		p.DistanceM = 0.5

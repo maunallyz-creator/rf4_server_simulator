@@ -1597,7 +1597,7 @@ async function loadFishRules(){
 function toggleRulesHelp(){const h=$('#rulesHelp'),b=$('#rulesHelpBtn');h.hidden=!h.hidden;b.setAttribute('aria-expanded',String(!h.hidden));b.textContent=h.hidden?'说明 ⌄':'收起 ⌃';}
 // ---- 鱼汛模式二选一（真实 / 旧版全随机）----
 const BITE_MODE_OPTIONS=[
- ['realistic','官方鱼汛','硬性门+生态+天气+吃饵+分布五开：拟饵不喂非掠食鱼、天然饵按双票、钓层/天气/昼夜/区域都参与判鱼；出鱼比例来自官方周档统计'],
+ ['realistic','官方鱼汛','硬性门+生态+天气+吃饵+分布五开：拟饵不喂非掠食鱼、天然饵按双票、钓层/天气/昼夜/区域都参与判鱼；出鱼比例来自 rf4info 公开周档统计'],
  ['legacy','全随机（旧版）','五个开关全关：任何鱼都可能咬任何饵，全图名册纯随机出鱼——改造之前的旧版手感']
 ];
 let BITE_MODE='';
@@ -1613,7 +1613,7 @@ function renderBiteMode(){
   const btns=BITE_MODE_OPTIONS.map(([m,label,hint])=>`<button class="btn sm" style="${BITE_MODE===m?'background:#2f7d4f':''}" onclick="askBiteMode('${m}')" title="${hint}">${label}${BITE_MODE===m?' ✓':''}</button>`).join('');
   $('#biteModeBody').innerHTML=`<span style="display:inline-flex;gap:6px;flex-wrap:wrap;align-items:center">${btns}</span>`;
   const st=$('#biteModeStatus');
-  if(st)st.textContent=BITE_MODE==='mixed'?'开关被手动改过，与预设不一致；点任一模式整体改写':'一键切换五项开关，最多 30 秒生效；出鱼比例用「官方周档统计」的那份权重';
+  if(st)st.textContent=BITE_MODE==='mixed'?'开关被手动改过，与预设不一致；点任一模式整体改写':'一键切换五项开关，最多 30 秒生效；出鱼比例用「rf4info 周档统计」的那份权重';
 }
 async function askBiteMode(mode){
   const opt=BITE_MODE_OPTIONS.find(o=>o[0]===mode);if(!opt)return;
@@ -1843,7 +1843,7 @@ function syncFishRows(){
 function renderFishRows(){
   if(!FISH_CFG)return;const q=($('#fishFilter')?.value||'').toLowerCase();
   const rows=FISH_CFG.fish.map((f,i)=>({f,i})).filter(x=>!q||`${x.f.fish_key} ${x.f.name_zh}`.toLowerCase().includes(q));
-  $('#fishRows').innerHTML=`<div class="table-wrap"><table class="fish-table"><thead><tr><th>启用</th><th>鱼种</th><th>爱吃的饵（规则 / 官服占比 / 实证 · 轮换）</th><th>基础权重</th><th>实际权重</th><th>权重来源</th></tr></thead><tbody>${rows.map(({f,i})=>`<tr><td><input class="switch" type="checkbox" id="fe_${i}" ${f.enabled?'checked':''} onchange="syncFishRows()"></td><td><div class="item-cell"><img class="fish-icon" src="icons/fish/${encodeURIComponent(String(f.fish_key||'').toLowerCase().replace(/\./g,'_'))}.png" onerror="this.style.display='none'"><div><b>${esc(f.name_zh||f.fish_key)}</b><div class="muted mono">${esc(f.fish_key)}</div></div></div></td><td>${baitSummaryHTML(f.fish_key,f)}</td><td>${Number(f.base_weight).toFixed(2)}</td><td><input class="mini-input" id="fw_${i}" type="number" min="0" step="0.1" value="${f.weight}" onchange="syncFishRows()"></td><td>${f.weight_source==='official'?'<span class="tag gold" title="官方周档统计（rf4info W32-W46）">官方统计</span>':(f.weight_source==='manual'?'<span class="tag" title="后台人工覆盖">人工</span>':'<span class="tag">静态</span>')}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">没有匹配鱼种</td></tr>'}</tbody></table></div>`;
+  $('#fishRows').innerHTML=`<div class="table-wrap"><table class="fish-table"><thead><tr><th>启用</th><th>鱼种</th><th>爱吃的饵（规则 / 官服占比 / 实证 · 轮换）</th><th>基础权重</th><th>实际权重</th><th>权重来源</th></tr></thead><tbody>${rows.map(({f,i})=>`<tr><td><input class="switch" type="checkbox" id="fe_${i}" ${f.enabled?'checked':''} onchange="syncFishRows()"></td><td><div class="item-cell"><img class="fish-icon" src="icons/fish/${encodeURIComponent(String(f.fish_key||'').toLowerCase().replace(/\./g,'_'))}.png" onerror="this.style.display='none'"><div><b>${esc(f.name_zh||f.fish_key)}</b><div class="muted mono">${esc(f.fish_key)}</div></div></div></td><td>${baitSummaryHTML(f.fish_key,f)}</td><td>${Number(f.base_weight).toFixed(2)}</td><td><input class="mini-input" id="fw_${i}" type="number" min="0" step="0.1" value="${f.weight}" onchange="syncFishRows()"></td><td>${f.weight_source==='official'?'<span class="tag gold" title="rf4info 周档统计（社区渔获/点位 + 官方周榜；W32-W46）">周档统计</span>':(f.weight_source==='manual'?'<span class="tag" title="后台人工覆盖">人工</span>':'<span class="tag">静态</span>')}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">没有匹配鱼种</td></tr>'}</tbody></table></div>`;
   const filtered=q.length>0;
   const on=$('#fishAllOn'),off=$('#fishAllOff');
   if(on)on.textContent=filtered?'启用筛选结果':'全部启用';
@@ -1871,7 +1871,7 @@ async function saveFishConfig(){
   FISH_CFG.setting={...s,bite_probability:p,bite_delay_fixed:fx,bite_delay_scale:sc,bite_delay_max:mx,bite_delay_lure_max:lm};
   await api('/api/fish/config',{method:'POST',body:JSON.stringify({area:FISH_CFG.area,setting:FISH_CFG.setting,fish:FISH_CFG.fish})});toast('已保存，立即生效');await selectFishArea(FISH_AREA,true);
 }
-async function resetFishConfig(){askConfirm('恢复默认鱼口','清除「'+FISH_AREA+'」的全部人工覆盖，回到按鱼库静态权重出鱼。',async()=>{await api('/api/fish/config/reset',{method:'POST',body:JSON.stringify({area:FISH_AREA})});toast('已恢复默认鱼口，见审计日志');await selectFishArea(FISH_AREA)})}
+async function resetFishConfig(){askConfirm('恢复默认鱼口','清除「'+FISH_AREA+'」的全部人工覆盖，回到已配置的周档统计权重；无基线时按鱼库静态权重出鱼。',async()=>{await api('/api/fish/config/reset',{method:'POST',body:JSON.stringify({area:FISH_AREA})});toast('已恢复默认鱼口，见审计日志');await selectFishArea(FISH_AREA)})}
 async function showAddFish(){showModal('添加鱼种到水域','搜索鱼库后添加到当前覆盖列表',`<input id="fishAddSearch" placeholder="中文名或 fish_key" oninput="debounce('fishAdd',searchFishPool)"><div class="results" id="fishAddResults"></div>`);searchFishPool()}
 async function searchFishPool(){const q=$('#fishAddSearch').value.trim();const list=await api('/api/fish/pool?q='+encodeURIComponent(q)+'&limit=80');$('#fishAddResults').innerHTML=list.map(x=>`<div class="result" data-key="${esc(x.fish_key)}" data-name="${esc(x.name_zh)}" onclick="addFishFromPool(this.dataset.key,this.dataset.name)"><div class="item-cell"><img class="fish-icon" src="icons/fish/${encodeURIComponent(String(x.fish_key||'').toLowerCase().replace(/\./g,'_'))}.png" onerror="this.style.display='none'"><div><b>${esc(x.name_zh)}</b><div class="muted mono">${esc(x.fish_key)}</div></div></div><span class="tag">${fmt(x.min_g)}-${fmt(x.max_g)}g</span></div>`).join('')||'<div class="empty">无结果</div>'}
 function addFishFromPool(key,name){syncFishRows();if(FISH_CFG.fish.some(f=>f.fish_key===key)){closeModal();return toast('该鱼种已在列表','bad')}FISH_CFG.fish.push({fish_key:key,name_zh:name,base_weight:0,weight:1,enabled:true,has_override:true});closeModal();renderFishRows();toast('已加入，记得保存')}

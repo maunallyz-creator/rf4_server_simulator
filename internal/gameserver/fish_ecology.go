@@ -10,7 +10,10 @@ import (
 	"time"
 )
 
-const fishEcologyProfileVersion = 5
+const (
+	fishEcologyProfileVersion = 5
+	fishDielCurveMin          = 0.08
+)
 
 //go:embed assets/fish_ecology_defs.json
 var fishEcologyDefsJSON []byte
@@ -403,11 +406,11 @@ func dielCurveWeights(raw string) []float64 {
 }
 
 // fishDielWeight 返回当前时段对吃口的影响系数。有曲线时按窗口期加权：
-// 峰值段 1.0、次优段按观测比例衰减、非活跃段最低 0.18（接近不出但不置零）。
+// 峰值段 1.0、次优段按观测比例衰减、非活跃段最低 0.08（接近不出但不置零）。
 func fishDielWeight(profile fishEcologyProfile, hour int64) float64 {
 	bit := int(fishActivityForHour(hour))
 	if curve := dielCurveWeights(profile.DielCurve); curve != nil {
-		return clampFloat(curve[bit], .08, 1)
+		return clampFloat(curve[bit], fishDielCurveMin, 1)
 	}
 	if profile.DielMask&(1<<uint(bit)) != 0 {
 		return 1

@@ -21,6 +21,16 @@ WEIGHTS = {
     "official_weekly_records": 1.0,
 }
 
+# 渔获条数反映的是「玩家怎么钓」，不是「水里各有多少」：蹲守热门的鱼被放大，
+# 没人上传的鱼被压到接近 0，水里的鱼种结构等于被玩家习惯改写。
+# 处理办法是幂压缩：w ** gamma 保留排序、只压集中度。18 张图全部过一遍，
+# gamma 按「第一名 <= 20%、前三名 <= 52%」这一套统一手感上限求解；
+# 本来就分散的图取 GAMMA_MAX（仍压 5%），避免「只动极端图」造成图间口径不一。
+TOP1_CAP = 0.20
+TOP3_CAP = 0.52
+GAMMA_MIN = 0.02
+GAMMA_MAX = 0.95
+
 
 def load_roster(db_path):
     db = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
@@ -51,11 +61,41 @@ def aggregate(week_paths):
     return agg
 
 
+def top_shares(weights):
+    total = sum(weights)
+    if total <= 0:
+        return 1.0, 1.0
+    ordered = sorted((w / total for w in weights), reverse=True)
+    return ordered[0], sum(ordered[:3])
+
+
+def within_caps(weights):
+    top1, top3 = top_shares(weights)
+    return top1 <= TOP1_CAP and top3 <= TOP3_CAP
+
+
+def compress(weights):
+    """求幂指数：满足 top1/top3 上限的最大 gamma，且不超过 GAMMA_MAX。"""
+    if not weights or sum(weights) <= 0:
+        return GAMMA_MAX, list(weights)
+    at_max = [w ** GAMMA_MAX for w in weights]
+    if within_caps(at_max):
+        return GAMMA_MAX, at_max
+    lo, hi = GAMMA_MIN, GAMMA_MAX
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        if within_caps([w ** mid for w in weights]):
+            lo = mid          # 还满足上限，往更小压缩（更大 gamma）试探
+        else:
+            hi = mid
+    return lo, [w ** lo for w in weights]
+
+
 def build_sql(agg, alias, roster):
     lines = [
-        "-- 18 个水域的鱼种出鱼权重（图内相对值，0-100）。",
+        "-- 18 个水域的 rf4info 周档鱼种出鱼权重（图内相对值，0–100）。",
         "-- 数据来源与时间跨度见 specs/changes/fish-weight-official/spec.md。",
-        "-- 名册内但统计窗口无记录的鱼保留最低 1.0，不置 0。",
+        "-- 名册内但周档窗口无记录的鱼保留最低 1.0，不置 0。",
         "-- 整表重置：本迁移是该表默认内容的唯一真源，人工覆盖在此之后重新设置。",
         "DELETE FROM fish_weight_override;",
         "",
@@ -67,16 +107,25 @@ def build_sql(agg, alias, roster):
     ]
     rows = []
     missing = 0
+    gamma_by_map = {}
     for map_id in sorted(alias):
         loc = alias[map_id]
         per_map = {f: v for (m, f), v in agg.items() if m == map_id}
-        peak = max(per_map.values()) if per_map else 1.0
-        for fish in sorted(roster.get(loc, [])):
-            if fish in per_map:
-                weight = max(round(per_map[fish] / peak * 100, 2), 1.0)
+        fish_list = sorted(roster.get(loc, []))
+        raw = [per_map.get(fish, 0.0) for fish in fish_list]
+        # 名册内但统计窗口无记录的鱼不参与 gamma 求解（它们固定拿最低值），
+        # 否则分母被这些 0 值撑大、求解出来的 gamma 会失真。
+        observed = [v for v in raw if v > 0]
+        gamma, scaled = compress(observed) if observed else (GAMMA_MAX, [])
+        by_fish = dict(zip([f for f, v in zip(fish_list, raw) if v > 0], scaled))
+        peak = max(scaled) if scaled else 1.0
+        for fish in fish_list:
+            if fish in by_fish:
+                weight = max(round(by_fish[fish] / peak * 100, 2), 1.0)
             else:
                 weight, missing = 1.0, missing + 1
             rows.append(f"('{loc}','{fish}',{weight})")
+        gamma_by_map[loc] = round(gamma, 3)
     lines.append(",\n  ".join(rows))
     lines += [
         ")",
@@ -88,7 +137,7 @@ def build_sql(agg, alias, roster):
         "    WHERE o.loc=v.loc AND o.fish_key=v.fish_key",
         " );",
     ]
-    return lines, len(rows), missing
+    return lines, len(rows), missing, gamma_by_map
 
 
 def main():
@@ -103,23 +152,25 @@ def main():
         raise SystemExit(f"未找到周档：{args.weeks}")
     alias, roster = load_roster(args.db)
     agg = aggregate(weeks)
-    lines, total, missing = build_sql(agg, alias, roster)
+    lines, total, missing, gamma_by_map = build_sql(agg, alias, roster)
 
     os.makedirs(args.out, exist_ok=True)
     target = os.path.join(args.out, "00071_fish_weight_official.sql")
     with open(target, "w", encoding="utf-8", newline="\n") as handle:
         handle.write("\n".join(lines) + "\n")
     # 基础权重表与覆盖表同源：迁移 00072 首次建立时把这份统计值原样抄过去，
-    # 之后人工调权重只影响覆盖表，基线仍然是官方统计口径。
+    # 之后人工调权重只影响覆盖表，基线仍然是周档统计口径。
     base_lines = [
-        "-- 官方统计基线（迁移 00072 由 fish_weight_override 首次快照生成，此处给出等价 SQL 便于重建）。",
+        "-- rf4info 周档统计基线（迁移 00072 由 fish_weight_override 首次快照生成，此处给出等价 SQL 便于重建）。",
         "INSERT OR REPLACE INTO fish_weight_base(loc,fish_key,weight,updated_ts,updated_by)",
-        "SELECT loc,fish_key,weight,updated_ts,COALESCE(updated_by,'') FROM fish_weight_override;",
+        "SELECT loc,fish_key,weight,updated_ts,COALESCE(updated_by,'') FROM fish_weight_override WHERE updated_by='rf4info';",
     ]
     base_target = os.path.join(args.out, "00072_fish_weight_base_seed.sql")
     with open(base_target, "w", encoding="utf-8", newline="\n") as handle:
         handle.write("\n".join(base_lines) + "\n")
     print(f"周档 {len(weeks)} 个，鱼×图 {len(agg)} 组，写出 {total} 行（无统计回退 1.0 的 {missing} 行）")
+    for loc in sorted(gamma_by_map):
+        print(f"  压缩 gamma {gamma_by_map[loc]:.3f}  {loc}")
     print(f"输出：{target}、{base_target}")
 
 

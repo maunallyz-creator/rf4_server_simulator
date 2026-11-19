@@ -3,6 +3,7 @@ package gameserver
 import (
 	"context"
 	"math"
+	"strconv"
 	"testing"
 	"time"
 
@@ -440,8 +441,10 @@ func TestCastDistanceUsesMountedReelAndClip(t *testing.T) {
 		t.Fatal(err)
 	}
 	clipped := srv.castDistanceForRig(ctx, uid, rod.GUID, 16)
-	if math.Abs(clipped.DistanceM-18) > 1e-6 || clipped.ClipLimitM != 18 {
-		t.Fatalf("卡线夹未限制抛投距离: %+v", clipped)
+	// 卡线不折进 DistanceM（158.f1 全量程，贴卡由客户端按 153.f5 截停），
+	// 只落 ClipLimitM 元数据。
+	if clipped.ClipLimitM != 18 || math.Abs(clipped.DistanceM-mastered.DistanceM) > 1e-6 {
+		t.Fatalf("卡线只应记元数据不改量程: %+v 未卡=%+v", clipped, mastered)
 	}
 }
 
@@ -582,6 +585,23 @@ func TestCastOverMaxRequestedClampsToRigMax(t *testing.T) {
 	castM := castOverMaxRequest(t, srv, sess, rodGUID, rigMax)
 	if math.Abs(castM-rigMax) > 1e-6 {
 		t.Fatalf("红区请求应按满竿上限收口: CastM=%g 上限=%g", castM, rigMax)
+	}
+}
+
+// 轮管卡截停：卡米数是机械止线，requested（含红区）超过卡米时实测距离以
+// 卡米为准。2026-11-19 实机：卡 8 抛 11.46，客户端未自行截停落 11.39m——
+// 客户端贴卡依赖 17/13 推送竿树后的 153.f5（配套修复），服务端仍须兜底收口。
+func TestCastOverClipCapsAtClipM(t *testing.T) {
+	srv, _ := newRigTestServer(t)
+	rodGUID, rigMax, sess := newOverMaxCastRig(t, srv)
+	clipM := int64(rigMax / 2)
+	clip := float64(clipM)
+	if err := srv.DB.UpsertRodSetting(t.Context(), rodGUID, reelClipSettingKey, strconv.FormatInt(clipM, 10)); err != nil {
+		t.Fatal(err)
+	}
+	castM := castOverMaxRequest(t, srv, sess, rodGUID, rigMax)
+	if math.Abs(castM-clip) > 1e-6 {
+		t.Fatalf("超卡抛投应按卡米截停: CastM=%g 卡米=%g", castM, clip)
 	}
 }
 

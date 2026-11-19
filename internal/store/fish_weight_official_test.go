@@ -107,7 +107,16 @@ func TestFishWeightBaseMatchesOverride(t *testing.T) {
 	if baseRows != ovRows {
 		t.Fatalf("基础权重行=%d，覆盖行=%d", baseRows, ovRows)
 	}
-	var mismatch int
+	var missingBase, mismatch int
+	if err := db.SQL.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM fish_weight_override o
+		LEFT JOIN fish_weight_base b ON b.loc=o.loc AND b.fish_key=o.fish_key
+		WHERE b.fish_key IS NULL`).Scan(&missingBase); err != nil {
+		t.Fatal(err)
+	}
+	if missingBase != 0 {
+		t.Fatalf("有 %d 条覆盖权重没有基础权重", missingBase)
+	}
 	if err := db.SQL.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM fish_weight_override o
 		JOIN fish_weight_base b ON b.loc=o.loc AND b.fish_key=o.fish_key
@@ -119,15 +128,128 @@ func TestFishWeightBaseMatchesOverride(t *testing.T) {
 	}
 }
 
-// 迁移必须可重复执行：行数与数值不变。
+// 保存鱼口设置会把整图行一起提交；未改动的周档行不能被管理员账号改写成“人工”。
+func TestAdminFishWeightSavePreservesOfficialRows(t *testing.T) {
+	db := openFishWeightTestDB(t)
+	ctx := context.Background()
+	const loc = "克马羚诺也湖"
+	cfg, err := db.GetAdminFishConfig(ctx, loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	official := -1
+	for i, row := range cfg.Fish {
+		if row.WeightSource == "official" {
+			official = i
+			break
+		}
+	}
+	if official < 0 {
+		t.Fatal("测试水域没有周档统计权重")
+	}
+	if err := db.SaveAdminFishConfig(ctx, FishConfigSave{
+		Area: loc, Setting: cfg.Setting, Fish: cfg.Fish,
+	}, "test-admin"); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = db.GetAdminFishConfig(ctx, loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Fish[official].WeightSource; got != "official" {
+		t.Fatalf("仅保存咬钩参数后来源=%q，期望 official", got)
+	}
+
+	cfg.Fish[official].Weight += 1
+	if err := db.SaveAdminFishConfig(ctx, FishConfigSave{
+		Area: loc, Setting: cfg.Setting, Fish: cfg.Fish,
+	}, "test-admin"); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = db.GetAdminFishConfig(ctx, loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Fish[official].WeightSource; got != "manual" {
+		t.Fatalf("改动权重后来源=%q，期望 manual", got)
+	}
+	for i, row := range cfg.Fish {
+		if i != official && row.WeightSource == "manual" {
+			t.Fatalf("未改动的 %s 被误标为人工权重", row.FishKey)
+		}
+	}
+}
+
+// 重置某图时，运行时应回到周档统计基线；只有没有基线的旧库才回退静态渔获数。
+func TestResetAdminFishConfigRestoresOfficialBaseline(t *testing.T) {
+	db := openFishWeightTestDB(t)
+	ctx := context.Background()
+	const loc = "克马羚诺也湖"
+	cfg, err := db.GetAdminFishConfig(ctx, loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var target FishConfigRow
+	for _, row := range cfg.Fish {
+		if row.WeightSource == "official" {
+			target = row
+			break
+		}
+	}
+	if target.FishKey == "" {
+		t.Fatal("测试水域没有周档统计权重")
+	}
+	target.Weight += 2
+	if err := db.SaveAdminFishConfig(ctx, FishConfigSave{
+		Area: loc, Setting: cfg.Setting, Fish: []FishConfigRow{target},
+	}, "test-admin"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ResetAdminFishConfig(ctx, loc); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = db.GetAdminFishConfig(ctx, loc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range cfg.Fish {
+		if row.FishKey != target.FishKey {
+			continue
+		}
+		if row.WeightSource != "official" || row.Weight != row.BaseWeight || !row.Enabled {
+			t.Fatalf("重置后权重行=%+v，期望恢复周档基线", row)
+		}
+		return
+	}
+	t.Fatalf("重置后找不到鱼种 %s", target.FishKey)
+}
+
+// 迁移必须可重复执行：周档行数与数值不变。
 func TestFishWeightOverrideMigrationIsRepeatable(t *testing.T) {
 	db := openFishWeightTestDB(t)
 	ctx := context.Background()
-	var before int
-	if err := db.SQL.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM fish_weight_override`).Scan(&before); err != nil {
-		t.Fatal(err)
+	snapshot := func() map[[2]string]float64 {
+		rows, err := db.SQL.QueryContext(ctx,
+			`SELECT loc,fish_key,weight FROM fish_weight_override WHERE updated_by='rf4info'`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = rows.Close() }()
+		out := map[[2]string]float64{}
+		for rows.Next() {
+			var loc, fish string
+			var weight float64
+			if err := rows.Scan(&loc, &fish, &weight); err != nil {
+				t.Fatal(err)
+			}
+			out[[2]string{loc, fish}] = weight
+		}
+		if err := rows.Err(); err != nil {
+			t.Fatal(err)
+		}
+		return out
 	}
+	before := snapshot()
 	body, err := migrationsFS.ReadFile("migrations/00071_fish_weight_official.sql")
 	if err != nil {
 		t.Fatal(err)
@@ -135,12 +257,62 @@ func TestFishWeightOverrideMigrationIsRepeatable(t *testing.T) {
 	if _, err := db.SQL.ExecContext(ctx, string(body)); err != nil {
 		t.Fatal(err)
 	}
-	var after int
-	if err := db.SQL.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM fish_weight_override`).Scan(&after); err != nil {
+	after := snapshot()
+	if len(before) != len(after) {
+		t.Fatalf("重复执行后行数 %d → %d", len(before), len(after))
+	}
+	for key, weight := range before {
+		if after[key] != weight {
+			t.Fatalf("重复执行后 %v 权重 %v → %v", key, weight, after[key])
+		}
+	}
+}
+
+// 渔获条数反映的是玩家怎么钓，不是水里各有多少：热门的鱼会被放大。
+// 因此每张图的权重都要做幂压缩，把「第一名占比 <= 20%、前三名 <= 52%」压到同一手感。
+// 这条测试锁住该上限，防止以后有人把压缩逻辑删掉退回原始占比。
+func TestFishWeightOverrideCapsConcentration(t *testing.T) {
+	db := openFishWeightTestDB(t)
+	ctx := context.Background()
+	rows, err := db.SQL.QueryContext(ctx,
+		`SELECT loc, fish_key, weight FROM fish_weight_override ORDER BY loc, weight DESC`)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if before != after {
-		t.Fatalf("重复执行后行数 %d → %d", before, after)
+	defer func() { _ = rows.Close() }()
+	byLoc := map[string][]float64{}
+	for rows.Next() {
+		var loc, fish string
+		var w float64
+		if err := rows.Scan(&loc, &fish, &w); err != nil {
+			t.Fatal(err)
+		}
+		byLoc[loc] = append(byLoc[loc], w)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if len(byLoc) == 0 {
+		t.Fatal("没有任何水域权重")
+	}
+	for loc, weights := range byLoc {
+		total := 0.0
+		for _, w := range weights {
+			total += w
+		}
+		if total <= 0 {
+			t.Fatalf("%s 权重合计为 0", loc)
+		}
+		top1 := weights[0] / total
+		top3 := top1
+		for i := 1; i < 3 && i < len(weights); i++ {
+			top3 += weights[i] / total
+		}
+		if top1 > 0.201 {
+			t.Errorf("%s 第一名占比 %.1f%%，超过上限 20%%", loc, top1*100)
+		}
+		if top3 > 0.521 {
+			t.Errorf("%s 前三名占比 %.1f%%，超过上限 52%%", loc, top3*100)
+		}
 	}
 }
