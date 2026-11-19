@@ -3,6 +3,7 @@ package gameserver
 import (
 	"fmt"
 	"math"
+	"sync/atomic"
 	"time"
 )
 
@@ -17,17 +18,43 @@ const distributionPeriodRealHours = 24
 const (
 	distributionBaseZeroFloor      = 0.10
 	distributionAlwaysPresentShare = 0.05
+	// distributionRarityFloorStep 是稀有度对缺席判定线的抬升量：每高一级抬
+	// 5 个百分点。鳗鱼这类稀有鱼在热门点位被蹲得渔获量很高、份额能进前五，
+	// 如果只看份额就会变成「天天有」，与稀有度语义冲突，所以用稀有度把线抬回去。
+	distributionRarityFloorStep = 0.05
+	distributionZeroFloorCap    = 0.35
 )
 
-// distributionZeroFloor 返回该份额对应的缺席判定线；份额够高时返回 0。
-func distributionZeroFloor(share float64) float64 {
-	if share >= distributionAlwaysPresentShare {
-		return 0
+// fishRaritySnapshot 缓存 fish_key -> 物种稀有度（0 普通 / 1 稀有 / 2 超稀有），
+// 供缺席判定使用。由 attachDB 在接入数据库时灌入，未加载时一律按普通鱼处理。
+var fishRaritySnapshot atomic.Value // map[string]int64
+
+func setFishRaritySnapshot(m map[string]int64) { fishRaritySnapshot.Store(m) }
+
+func fishRarityOf(key string) int64 {
+	if m, ok := fishRaritySnapshot.Load().(map[string]int64); ok {
+		return m[key]
 	}
-	if share <= 0 {
-		return distributionBaseZeroFloor
+	return 0
+}
+
+// distributionZeroFloor 返回该鱼在该图的缺席判定线：散布值低于这条线就整天不出现。
+// 两部分叠加：①图内权重份额越高越不容易缺席，普通鱼份额 ≥5% 时第一项为 0；
+// ②物种稀有度每高一级再抬 5 个百分点，保证稀有鱼即使份额高也不会天天出现。
+// 上限 distributionZeroFloorCap，避免稀有鱼变成「整天都钓不到」。
+func distributionZeroFloor(share float64, rarity int64) float64 {
+	floor := 0.0
+	if share < distributionAlwaysPresentShare {
+		if share <= 0 {
+			floor = distributionBaseZeroFloor
+		} else {
+			floor = distributionBaseZeroFloor * (1 - share/distributionAlwaysPresentShare)
+		}
 	}
-	return distributionBaseZeroFloor * (1 - share/distributionAlwaysPresentShare)
+	if rarity > 0 {
+		floor += distributionRarityFloorStep * float64(rarity)
+	}
+	return math.Min(floor, distributionZeroFloorCap)
 }
 
 // 区域以玩家世界位置划分；缺位置时使用客户端场景与钓点编号。
@@ -65,7 +92,7 @@ func distributionMultiplier(area, species string, now time.Time, share float64) 
 	// 三成鱼种直接归零、非零跨度 26 倍，实测单图单期有效鱼种中位只有 7.5、
 	// 单饵最高占比 25.5%（90 分位 42%），体感就是「一款饵只上个别几种鱼」。
 	// 改后同口径 10.2 / 19.8%（90 分位 31%）。
-	if v < distributionZeroFloor(share) {
+	if v < distributionZeroFloor(share, fishRarityOf(species)) {
 		return 0
 	}
 	return (0.55 + 0.90*v) * activityMultiplier(species, hour)
