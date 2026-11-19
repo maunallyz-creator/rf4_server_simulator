@@ -39,20 +39,17 @@ func fishRarityOf(key string) int64 {
 }
 
 // distributionZeroFloor 返回该鱼在该图的缺席判定线：散布值低于这条线就整天不出现。
-// 两部分叠加：①图内权重份额越高越不容易缺席，普通鱼份额 ≥5% 时第一项为 0；
-// ②物种稀有度每高一级再抬 5 个百分点，保证稀有鱼即使份额高也不会天天出现。
-// 上限 distributionZeroFloorCap，避免稀有鱼变成「整天都钓不到」。
+// 只有稀有鱼才会整天缺席，普通鱼（rarity 0）永不缺席——它们是这个水域的常驻鱼，
+// 「某天一条都钓不到」只会让玩家以为鱼没刷出来。稀有度每高一级抬 5 个百分点；
+// 份额 ≥ distributionAlwaysPresentShare 的稀有鱼打对折，避免热门稀有鱼被蹲成常驻。
+// 上限 distributionZeroFloorCap，防止超稀有鱼变成整天钓不到。
 func distributionZeroFloor(share float64, rarity int64) float64 {
-	floor := 0.0
-	if share < distributionAlwaysPresentShare {
-		if share <= 0 {
-			floor = distributionBaseZeroFloor
-		} else {
-			floor = distributionBaseZeroFloor * (1 - share/distributionAlwaysPresentShare)
-		}
+	if rarity <= 0 {
+		return 0
 	}
-	if rarity > 0 {
-		floor += distributionRarityFloorStep * float64(rarity)
+	floor := distributionRarityFloorStep * float64(rarity)
+	if share >= distributionAlwaysPresentShare {
+		floor /= 2
 	}
 	return math.Min(floor, distributionZeroFloorCap)
 }

@@ -16,9 +16,11 @@ func TestPityDistributionFloor(t *testing.T) {
 	// 找一个该格散布为 0 的鱼种×时刻组合（散布确定性，约一成组合为 0）。
 	// 散布周期是 24 真实小时，所以按周期步进扫描，可复现且不再跳过。
 	var zeroKey string
+	// 只有稀有鱼会整天缺席，这里把 eel 标成 rarity 1 才可能搜到散布为 0 的格子。
+	setFishRaritySnapshot(map[string]int64{"eel": 1})
 	for step := 0; step < 64 && zeroKey == ""; step++ {
 		ts := at.Add(time.Duration(step) * distributionPeriodRealHours * time.Hour)
-		for _, key := range []string{"c.roach", "frog"} {
+		for _, key := range []string{"eel", "frog"} {
 			// 份额 1/101：低于「永不缺席」阈值，仍可能被刷掉。
 			if distributionMultiplier(area, key, ts, 1.0/101) == 0 {
 				at, zeroKey = ts, key

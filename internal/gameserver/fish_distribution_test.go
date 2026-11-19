@@ -46,15 +46,23 @@ func TestFishDistributionRegionsTimeAndActivity(t *testing.T) {
 	if activityMultiplier("unknown", 23) != 1 {
 		t.Fatal("unknown activity must be neutral")
 	}
-	zero, positive := false, false
+	// 普通鱼（perch）常驻，只有稀有鱼（eel，rarity 1）会整天缺席。
+	setFishRaritySnapshot(map[string]int64{"eel": 1})
+	perchZero, eelZero, eelPositive := false, false, false
 	for i := 0; i < 200; i++ {
-		v := distributionMultiplier(a, "perch", now.Add(time.Duration(i)*distributionPeriodRealHours*time.Hour), 0)
-		zero = zero || v == 0
-		positive = positive || v > 0
+		at := now.Add(time.Duration(i) * distributionPeriodRealHours * time.Hour)
+		perchZero = perchZero || distributionMultiplier(a, "perch", at, 0) == 0
+		v := distributionMultiplier(a, "eel", at, 0)
+		eelZero = eelZero || v == 0
+		eelPositive = eelPositive || v > 0
 	}
-	if !zero || !positive {
-		t.Fatal("fish must move in and out of regions")
+	if perchZero {
+		t.Fatal("common fish must never disappear for a whole day")
 	}
+	if !eelZero || !eelPositive {
+		t.Fatal("rare fish must move in and out of regions")
+	}
+	setFishRaritySnapshot(map[string]int64{})
 }
 
 func TestFishSwitchCombinationsAndNoDisabledFallback(t *testing.T) {
