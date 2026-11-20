@@ -423,12 +423,12 @@ func fishDielWeight(profile fishEcologyProfile, hour int64) float64 {
 	} else if profile.DielMask&(1<<uint(bit)) == 0 {
 		weight = .35
 	}
-	// 图鉴标「愁」的半天（白天或夜里）设硬上限：社区渔获时刻样本少时，鳗鱼
-	// 这类夜行鱼的曲线会被抬到 0.47、白天仍能出鱼，与「愁＝基本不出」冲突。
+	// 图鉴评为低活跃的那半天（白天或夜里）设硬上限：社区渔获时刻样本少时，
+	// 夜行鱼的曲线会被平均抬高，白天仍能出鱼，与「低活跃＝基本不咬」冲突。
 	if half := dielHalf(bit); half != "" && fishDielBlockedFor(profile.FishKey, half) {
 		weight = math.Min(weight, fishDielBlockedCap)
 	}
-	// 鳗鱼在 GameKee 表里没有条目，但它白天基本不出是明确口径，单独兜住昼段。
+	// 少数夜行鱼种在图鉴里没有条目，但白天基本不咬，单独兜住昼段。
 	if bit == 2 && strictNocturnalFish[profile.FishKey] {
 		weight = math.Min(weight, fishDielNocturnalDayCap)
 	}
@@ -456,7 +456,7 @@ var strictNocturnalFish = map[string]bool{
 // fishDielNocturnalDayCap 是夜行鱼昼段权重的硬上限。
 const fishDielNocturnalDayCap = 0.05
 
-// fishDielBlockedCap 是图鉴标「愁」的那半天的权重上限（接近不出）。
+// fishDielBlockedCap 是图鉴评为低活跃的那半天的权重上限（接近不咬）。
 const fishDielBlockedCap = 0.05
 
 func fishEcologyJSONMap(raw string) map[string]float64 {

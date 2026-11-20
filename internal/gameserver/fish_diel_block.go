@@ -7,8 +7,8 @@ import (
 	"sync"
 )
 
-// fish_diel_block.json 记录「某个半天的活跃度是愁（基本不出）」的鱼种，
-// 由 GameKee 鱼种图鉴的日间/夜间活跃度图标转录而来（2026-11-19 抓取）。
+// fish_diel_block.json 记录「某个半天基本不咬」的鱼种，由鱼种图鉴的
+// 日间/夜间活跃度评级（低活跃档）转录而来（2026-11-19 抓取）。
 // 值只有两种："day"（白天不出）、"night"（夜里不出），两者都写表示整天都不活跃。
 //
 //go:embed assets/fish_diel_block.json
@@ -42,7 +42,7 @@ func decodeFishDielBlock(raw []byte) map[string]map[string]bool {
 	return out
 }
 
-// fishDielBlockedFor 判断该鱼的某个半天是否被标为「基本不出」。
+// fishDielBlockedFor 判断该鱼的某个半天是否被评为「基本不咬」。
 // half 取 "day" 或 "night"。
 func fishDielBlockedFor(fishKey, half string) bool {
 	blocked, ok := fishDielBlocked()[fishKey]

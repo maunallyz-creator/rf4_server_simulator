@@ -8,9 +8,9 @@ import (
 )
 
 // distributionPeriodRealHours 是鱼群聚散（以及饵效抖动）的重排周期，单位是
-// 真实小时：每 24 真实小时（一天）重排一次。周期内同一格子同一鱼种的结果
+// 真实小时：每 12 真实小时重排一次。周期内同一格子同一鱼种的结果
 // 固定，不因玩家移动或换饵重抽。
-const distributionPeriodRealHours = 24
+const distributionPeriodRealHours = 12
 
 // 鱼群聚散里的「今天这条鱼完全不出现」只留给少数鱼：图内权重份额越高的鱼
 // 越不容易被刷掉，份额达到 distributionAlwaysPresentShare 的鱼永不缺席。
