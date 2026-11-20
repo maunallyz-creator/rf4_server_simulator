@@ -417,8 +417,9 @@ func TestPaceReschedulePreservesKnown(t *testing.T) {
 		t.Fatal("re-schedule lost pace: PaceKnown=false")
 	}
 	wait := time.Until(st.BiteAt).Seconds()
-	if wait < 19.44-1e-9 || wait > 60+1e-9 {
-		t.Fatalf("re-schedule fell back to legacy delay: got %.2fs want [19.44,60]", wait)
+	// time.Until 会消耗调度和测试开销，留出 10ms 级边界余量。
+	if wait < 19.3 || wait > 60+1e-9 {
+		t.Fatalf("re-schedule fell back to legacy delay: got %.2fs want [19.3,60]", wait)
 	}
 	stopWeatherDamageTimer(st)
 }

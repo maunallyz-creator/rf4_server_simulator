@@ -112,8 +112,20 @@ func newFishQueryRegions(loc string, scene fishQueryRegionScene, now time.Time, 
 	return g, nil
 }
 
+// distributionFactorCacheKey 把 share 的缺席判定档一并纳入缓存键。
+// distributionZeroFloor 只依赖 share 是否达到 5%，因此按该阈值分桶即可；
+// shortlist 与 best 使用不同权重集时不能复用同一份因子。
+func distributionFactorCacheKey(key string, share float64) string {
+	bucket := "0"
+	if share >= distributionAlwaysPresentShare {
+		bucket = "1"
+	}
+	return key + "\x00" + bucket
+}
+
 func (g *fishQueryRegions) distributionFactors(ctx context.Context, key string, share float64) ([]float64, error) {
-	if factors, ok := g.factors[key]; ok {
+	cacheKey := distributionFactorCacheKey(key, share)
+	if factors, ok := g.factors[cacheKey]; ok {
 		return factors, nil
 	}
 	factors := make([]float64, len(g.areas))
@@ -126,7 +138,7 @@ func (g *fishQueryRegions) distributionFactors(ctx context.Context, key string, 
 			factors[i] *= fishZoneFactorForPoint(g.zones, g.cells[i][0], g.cells[i][1], key)
 		}
 	}
-	g.factors[key] = factors
+	g.factors[cacheKey] = factors
 	return factors, nil
 }
 
@@ -168,7 +180,11 @@ func (g *fishQueryRegions) shortlist(ctx context.Context, fish string, weights m
 	}
 	var ranked []scoredRegion
 	if weights[fish] > 0 {
-		for i, factor := range g.factors[fish] {
+		fishShare := 0.0
+		if weightSum > 0 {
+			fishShare = weights[fish] / weightSum
+		}
+		for i, factor := range g.factors[distributionFactorCacheKey(fish, fishShare)] {
 			if i%64 == 0 && ctx.Err() != nil {
 				return ctx.Err()
 			}
