@@ -47,6 +47,10 @@ func TestBaitEvidenceThresholdGrading(t *testing.T) {
 	// 显式开启分级（seedBaitRuleTest 默认关闭，见其注释）
 	s.tunMu.Lock()
 	delete(s.tunCache, "bait_share_strong")
+	// 本用例要用 1 条纪录验证长尾档（0.6%），把最小样本量降到 1；
+	// 生产默认 5 条，防止「1/2 = 50%」这种噪声直接顶到强证据档。
+	s.tunCache["bait_share_min_count"] = 1
+	s.tunAt = time.Now() // 阻止 ensureTunablesLocked 立刻用 DB 值覆盖上面的手写值
 	s.tunMu.Unlock()
 	s.loadRf4Share() // 同步预热，避免异步时序
 

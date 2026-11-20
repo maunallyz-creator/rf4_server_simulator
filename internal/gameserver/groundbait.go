@@ -829,7 +829,7 @@ func (s *Server) groundbaitAffinityNow(ctx context.Context, c fishRollContext,
 // 中文名先取生态档案里的 source.name，读不到再退回数据库名字表。
 func (s *Server) groundbaitRuleVote(ctx context.Context, c fishRollContext, fishKey string) (map[string]bool, bool) {
 	if name := groundbaitFishName(fishKey); name != "" {
-		if rule, ok := fishBaitRules[ruleName(name)]; ok {
+		if rule, ok := lookupFishBaitRule(name); ok {
 			return groundbaitAcceptedFamilies(rule), true
 		}
 	}
@@ -838,7 +838,8 @@ func (s *Server) groundbaitRuleVote(ctx context.Context, c fishRollContext, fish
 		return nil, false
 	}
 	if name, ok := names[fishKey]; ok {
-		return groundbaitAcceptedFamilies(fishBaitRules[ruleName(name)]), true
+		r, _ := lookupFishBaitRule(name)
+		return groundbaitAcceptedFamilies(r), true
 	}
 	return nil, false
 }

@@ -65,6 +65,8 @@
 | poolccanfhd 字段 5 | `ojoboopbaec[]` = `hpopgbjohpk`/507 → 空数组也要发 args code **146**，发 null 会让客户端 `foreach` 崩 |
 | 21/5 | args code **145**（空兑换列表） |
 | 卡片/卡册实例数组 | 客户端真实类型注册表：**362**=`ipdpoaiekem`、**364**=`imdcjllgdcn`；363是`phjbhljooid`卡册定义。使用`by_elem`显式映射，不能用`by_type_id`合成值或未注册的DTO名称替代 |
+| 成品窝料配方 | [事实] 4.0.25034 类型注册表及说明读取器确认：120.f0 基础料为 args **50** / type 121；f1 增香剂为 args **52** / type 123；f2 添加剂为 args **51** / type 122（systemID、名称）。`fbankbpbdbf.mckmdgepecf` 遍历三数组，null 会中断材料选择与详情初始化 |
+| PVA 成品配方 | [事实] 145.f1 为 type **120** 干混合对象；制作时保存所选实例的配方快照，耗尽、拆分后仍从快照展示。只有干混合定义名的旧记录不能恢复原实例配料 |
 | 卡片入册同步 | 800更新列表同时发送原卡及卡册，移除列表为空；原卡StorageType仍为18，父GUID指向卡册。4/1、4/4、4/5也需包含已入册原卡，客户端按父GUID填卡位；卡册f0快照不能替代库存卡片 |
 | 竿的零件 | 客户端工作坊按竿 `f5` 的 `gcfcdnfmnbh` 列表渲染；出厂部件（竿坯/手柄/导环）必须同时写进 f5，只写 f0~f2 不够 |
 | 装配派生表 | `rig_component` 由 `f5` 单向投影；历史数据可能为空，`reconcileRigProjection` 可回填 |

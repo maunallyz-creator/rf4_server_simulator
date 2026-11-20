@@ -10,7 +10,10 @@ import (
 	"time"
 )
 
-const fishEcologyProfileVersion = 4
+const (
+	fishEcologyProfileVersion = 5
+	fishDielCurveMin          = 0.08
+)
 
 //go:embed assets/fish_ecology_defs.json
 var fishEcologyDefsJSON []byte
@@ -31,6 +34,7 @@ type fishEcologyProfile struct {
 	TempPrefC      float64 `json:"temp_pref_c"`
 	TempMaxC       float64 `json:"temp_max_c"`
 	DielMask       int64   `json:"diel_mask"`
+	DielCurve      string  `json:"diel_curve"`
 	SeasonMask     int64   `json:"season_mask"`
 	DietJSON       string  `json:"diet_json"`
 	WeatherJSON    string  `json:"weather_json"`
@@ -75,16 +79,17 @@ func (s *Server) ensureFishEcology(ctx context.Context) (int, error) {
 		res, ierr := s.DB.SQL.ExecContext(ctx, `
 			INSERT INTO fish_ecology(
 				fish_key, layer_min, layer_pref, layer_max,
-				temp_min_c, temp_pref_c, temp_max_c, diel_mask,
+				temp_min_c, temp_pref_c, temp_max_c, diel_mask, diel_curve,
 				season_mask, diet_json, weather_json, action_json, substrate_json,
 				color_json, current_pref, activity, light_pref, clarity_pref,
 				aggression, rarity_tier, enabled, profile_version, source, updated_ts
-			) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+			) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 			ON CONFLICT(fish_key) DO UPDATE SET
 				layer_min=excluded.layer_min, layer_pref=excluded.layer_pref,
 				layer_max=excluded.layer_max, temp_min_c=excluded.temp_min_c,
 				temp_pref_c=excluded.temp_pref_c, temp_max_c=excluded.temp_max_c,
-				diel_mask=excluded.diel_mask, season_mask=excluded.season_mask,
+				diel_mask=excluded.diel_mask, diel_curve=excluded.diel_curve,
+				season_mask=excluded.season_mask,
 				diet_json=excluded.diet_json, weather_json=excluded.weather_json,
 				action_json=excluded.action_json, substrate_json=excluded.substrate_json,
 				color_json=excluded.color_json, current_pref=excluded.current_pref,
@@ -95,7 +100,7 @@ func (s *Server) ensureFishEcology(ctx context.Context) (int, error) {
 				updated_ts=excluded.updated_ts
 			WHERE fish_ecology.profile_version < excluded.profile_version`,
 			p.FishKey, p.LayerMin, p.LayerPref, p.LayerMax,
-			p.TempMinC, p.TempPrefC, p.TempMaxC, p.DielMask,
+			p.TempMinC, p.TempPrefC, p.TempMaxC, p.DielMask, p.DielCurve,
 			p.SeasonMask, p.DietJSON, p.WeatherJSON, p.ActionJSON, p.SubstrateJSON,
 			p.ColorJSON, p.CurrentPref, p.Activity, p.LightPref, p.ClarityPref,
 			p.Aggression, p.RarityTier, boolInt(p.Enabled), p.ProfileVersion, p.Source, now)
@@ -115,7 +120,7 @@ func (s *Server) reloadFishEcologyCache(ctx context.Context) error {
 	}
 	rows, err := s.DB.SQL.QueryContext(ctx, `
 		SELECT fish_key, layer_min, layer_pref, layer_max,
-		       temp_min_c, temp_pref_c, temp_max_c, diel_mask,
+		       temp_min_c, temp_pref_c, temp_max_c, diel_mask, diel_curve,
 		       season_mask, diet_json, weather_json, action_json, substrate_json,
 		       color_json, current_pref, activity, light_pref, clarity_pref,
 		       aggression, rarity_tier, enabled, profile_version, source
@@ -130,7 +135,7 @@ func (s *Server) reloadFishEcologyCache(ctx context.Context) error {
 		var enabled int
 		if err := rows.Scan(
 			&p.FishKey, &p.LayerMin, &p.LayerPref, &p.LayerMax,
-			&p.TempMinC, &p.TempPrefC, &p.TempMaxC, &p.DielMask,
+			&p.TempMinC, &p.TempPrefC, &p.TempMaxC, &p.DielMask, &p.DielCurve,
 			&p.SeasonMask, &p.DietJSON, &p.WeatherJSON, &p.ActionJSON, &p.SubstrateJSON,
 			&p.ColorJSON, &p.CurrentPref, &p.Activity, &p.LightPref, &p.ClarityPref,
 			&p.Aggression, &p.RarityTier, &enabled, &p.ProfileVersion, &p.Source,
@@ -147,6 +152,9 @@ func (s *Server) reloadFishEcologyCache(ctx context.Context) error {
 	s.fishEcologyCache = cache
 	s.fishEcologyCacheLoaded = true
 	s.fishEcologyMu.Unlock()
+	// 生态全量重载后，节奏通路的名册食性聚合必须同步作废，否则旧聚合
+	// 活过 TTL（PR #531 审查 P2-4）。
+	s.invalidatePaceDietCache()
 	return nil
 }
 
@@ -158,6 +166,7 @@ func (s *Server) invalidateFishEcologyCache() {
 	s.fishEcologyCache = nil
 	s.fishEcologyCacheLoaded = false
 	s.fishEcologyMu.Unlock()
+	s.invalidatePaceDietCache()
 }
 
 func boolInt(v bool) int {
@@ -214,13 +223,13 @@ func (s *Server) fishEcology(ctx context.Context, key string) fishEcologyProfile
 	var enabled, profileVersion int
 	err := s.DB.SQL.QueryRowContext(ctx, `
 		SELECT fish_key, layer_min, layer_pref, layer_max,
-		       temp_min_c, temp_pref_c, temp_max_c, diel_mask,
+		       temp_min_c, temp_pref_c, temp_max_c, diel_mask, diel_curve,
 		       season_mask, diet_json, weather_json, action_json, substrate_json,
 		       color_json, current_pref, activity, light_pref, clarity_pref,
 		       aggression, rarity_tier, enabled, profile_version, source
 		FROM fish_ecology WHERE fish_key=?`, key).Scan(
 		&p.FishKey, &p.LayerMin, &p.LayerPref, &p.LayerMax,
-		&p.TempMinC, &p.TempPrefC, &p.TempMaxC, &p.DielMask,
+		&p.TempMinC, &p.TempPrefC, &p.TempMaxC, &p.DielMask, &p.DielCurve,
 		&p.SeasonMask, &p.DietJSON, &p.WeatherJSON, &p.ActionJSON, &p.SubstrateJSON,
 		&p.ColorJSON, &p.CurrentPref, &p.Activity, &p.LightPref, &p.ClarityPref,
 		&p.Aggression, &p.RarityTier, &enabled, &profileVersion, &p.Source)
@@ -379,9 +388,31 @@ func fishActivityForHour(hour int64) float64 {
 	}
 }
 
+// dielCurveWeights 解析四段权重（夜、晨、昼、昏）。为空表示该鱼只有旧版
+// diel_mask 位图，调用方回退到位图判断。
+func dielCurveWeights(raw string) []float64 {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var w []float64
+	if err := json.Unmarshal([]byte(raw), &w); err != nil || len(w) != 4 {
+		return nil
+	}
+	for i := range w {
+		w[i] = clampFloat(w[i], 0, 1)
+	}
+	return w
+}
+
+// fishDielWeight 返回当前时段对吃口的影响系数。有曲线时按窗口期加权：
+// 峰值段 1.0、次优段按观测比例衰减、非活跃段最低 0.08（接近不出但不置零）。
 func fishDielWeight(profile fishEcologyProfile, hour int64) float64 {
-	bit := uint(fishActivityForHour(hour))
-	if profile.DielMask&(1<<bit) != 0 {
+	bit := int(fishActivityForHour(hour))
+	if curve := dielCurveWeights(profile.DielCurve); curve != nil {
+		return clampFloat(curve[bit], fishDielCurveMin, 1)
+	}
+	if profile.DielMask&(1<<uint(bit)) != 0 {
 		return 1
 	}
 	return .35

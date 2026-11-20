@@ -780,6 +780,24 @@ func hCraft(ctx *Ctx) ([]byte, bool) {
 	// usedMats 记下本次真的扣掉了哪些原料 item_id（不是槽里的需求 id）。
 	// 自制窝料的产物没有独立 item_id，只能按实例把用料记下来。
 	usedMats := []string{}
+	var pvaFeed *proto.Value
+	var pvaFeedGUID string
+	consumeMaterial := func(row *store.Item, qty int64) (int64, error) {
+		if producedRow.TypeID == 145 && row.TypeID == 120 {
+			if pvaFeedGUID != "" && pvaFeedGUID != row.GUID {
+				return 0, errors.New("PVA 制作必须使用同一份干混合配方")
+			}
+			if pvaFeed == nil {
+				var err error
+				pvaFeed, err = srv.captureFeedRecipeTx(cctx, tx, row)
+				if err != nil {
+					return 0, err
+				}
+				pvaFeedGUID = row.GUID
+			}
+		}
+		return consumeItemQtyTx(cctx, tx, row, qty)
+	}
 	// keepnetTaken 记下本次从鱼护里吃掉的渔获 echo guid。它们不在 item 表里，
 	// 需要单独走 4/21 物品移除信号，客户端才会把鱼护界面里的原鱼撤下。
 	keepnetTaken := []string{}
@@ -835,7 +853,7 @@ func hCraft(ctx *Ctx) ([]byte, bool) {
 					if have := stackCountTx(cctx, tx, it); have < take {
 						take = have
 					}
-					got, cerr := consumeItemQtyTx(cctx, tx, it, take)
+					got, cerr := consumeMaterial(it, take)
 					if cerr != nil {
 						return fail("扣材料失败", "item", accept, "err", cerr)
 					}
@@ -907,7 +925,7 @@ func hCraft(ctx *Ctx) ([]byte, bool) {
 			need := per * times
 			consumed := false
 			if row := byGUID[slot.GUID]; row != nil && row.Qty > 0 {
-				got, cerr := consumeItemQtyTx(cctx, tx, row, need)
+				got, cerr := consumeMaterial(row, need)
 				if cerr != nil {
 					return fail("扣指定材料失败", "guid", slot.GUID, "err", cerr)
 				}
@@ -952,7 +970,7 @@ func hCraft(ctx *Ctx) ([]byte, bool) {
 					if !match {
 						continue
 					}
-					got, cerr := consumeItemQtyTx(cctx, tx, it, remaining)
+					got, cerr := consumeMaterial(it, remaining)
 					if cerr != nil {
 						return fail("按需求扣材料失败", "item", it.ItemID, "err", cerr)
 					}
@@ -1066,6 +1084,9 @@ func hCraft(ctx *Ctx) ([]byte, bool) {
 
 	if err := setItemName(producedRow, req.Name); err != nil {
 		return fail("自定义名称写入失败", "err", err)
+	}
+	if err := srv.savePVARecipeTx(cctx, tx, producedRow, pvaFeed, usedMats); err != nil {
+		return fail("PVA 配方保存失败", "err", err)
 	}
 
 	// 标本挂鱼（事务内）：定位→嵌鱼→消耗一体，任何一步失败整体回滚。

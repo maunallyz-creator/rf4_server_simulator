@@ -1005,6 +1005,13 @@ func hCast(ctx *Ctx) ([]byte, bool) {
 			"requested_m", math.Round(requestedM*100)/100, "capped_m", math.Round(actionMaxM*100)/100)
 		castM = actionMaxM
 	}
+	if profile.ClipLimitM > 0 && castM > profile.ClipLimitM {
+		// 轮管卡是机械止线：客户端按竿树 153.f5 自行截停，落点坐标不会
+		// 超过卡米数；requested（红区）仍可能超卡，实测距离以卡米为准。
+		ctx.Log.Info("抛投请求超轮管卡，按卡米截停",
+			"requested_m", math.Round(castM*100)/100, "clip_m", math.Round(profile.ClipLimitM*100)/100)
+		castM = profile.ClipLimitM
+	}
 	st.mu.Lock()
 	st.Bait = bait
 	st.CastM = castM
