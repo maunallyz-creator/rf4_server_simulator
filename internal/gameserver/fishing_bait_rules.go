@@ -629,6 +629,17 @@ func (s *Server) filterFishBaitSet(loc string, ids []string, keys []string, weig
 					continue
 				}
 			}
+			// 通用长尾闸：官方纪录里这条鱼吃过这款饵、但占比低于长尾阈值时，
+			// 说明只是偶发或误捕（土豆占葛氏鲈塘鳢 0.02%、占欧鳊 3 千条纪录里的 0 条），
+			// 不能让它靠 companion 证据或本图历史记录留在判鱼池里，否则一款饵
+			// 会把整图不相关的鱼刷出来。规则明确点名（非「各类饵」通配）的饵不受影响。
+			// share<0 表示官方纪录里这款饵对该鱼不足最小样本（或从未出现），
+			// 与「出现过但占比极低」同样不能作为判鱼依据。
+			if grading && s.rf4FishTotalOf(key) >= 100 && share < tail {
+				if len(r.allow) == 0 || !b.matchesAnyExcept(r.allow, "各类饵") {
+					continue
+				}
+			}
 			lureFactor := 1.0
 			// 该饵在官方纪录里对这条鱼已经有强证据（≥5%）时不看鱼种级占比：
 			// 具体到饵的证据永远优先于「这条鱼总体吃不吃拟饵」。
