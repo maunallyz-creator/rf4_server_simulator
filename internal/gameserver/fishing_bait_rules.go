@@ -612,15 +612,39 @@ func (s *Server) filterFishBaitSet(loc string, ids []string, keys []string, weig
 				full = allowed || share >= strong || (!hasRule || !anyAllowed) && comp >= 3 ||
 					(share < 0 && comp <= 0 && localEvidence[j][key])
 			}
+			// 拟饵门：非路亚鱼种偶尔也会咬一口拟饵，但那是极小概率。
+			// 规则里的「拟饵」是 category 17 全通配，会把草鱼、欧鳊这类
+			// 官方拟饵占比 1~4% 的鱼当成路亚目标整天刷。这里按官方占比分档：
+			// <1% 不给满档（降为同食性兜底），1~5% 满档但压到四分之一，
+			// ≥5% 不干预——高占比的路亚鱼种手感不变。
+			lureFactor := 1.0
+			if b.category == 17 {
+				if ls := s.rf4LureShareOf(key); ls >= 0 {
+					switch {
+					case ls < 1:
+						full = false
+					case ls < 5:
+						lureFactor = 0.25
+					}
+				}
+			}
 			if full {
 				preferred++
-				score = 1.0 + 0.5*variation
-			} else if grading && (share >= medium || (share < 0 && comp >= 1) || localEvidence[j][key]) {
+				score = (1.0 + 0.5*variation) * lureFactor
+			} else if grading && share >= medium {
 				score = maxBaitPreference * 0.35
 			} else if grading && share >= tail {
 				score = maxBaitPreference * 0.18
+			} else if share < 0 && comp >= 1 {
+				// 占比表缺失（表空/该饵未映射）时才退回 companion；
+				// 有占比就用占比，避免 tier1 的低频饵也被当成中档证据。
+				score = maxBaitPreference * 0.35
 			} else if b.legalAlternative(r) {
 				score = maxBaitPreference * legalAlternativeShare
+			}
+			if score > 0 && b.category == 17 && score < maxBaitPreference*0.05*2 {
+				// 拟饵的兜底再压一档：避免没证据的拟饵靠 legalAlternative 上钩。
+				score = maxBaitPreference * 0.05
 			}
 			if activeGroup != nil {
 				score *= rotationScoreMultiplier(activeGroup, b)
@@ -856,6 +880,22 @@ func (s *Server) rf4BaitShare(ctx context.Context, fishKey, baitID string) float
 	return -1
 }
 
+// rf4LureShareOf 返回该鱼在官方纪录里拟饵（category 17）占全部渔获的百分比。
+// 表未就绪/无纪录时返回 -1，调用方按「未知」处理而不是当成 0。
+func (s *Server) rf4LureShareOf(fishKey string) float64 {
+	if s.DB == nil || fishKey == "" {
+		return -1
+	}
+	s.rf4ShareMu.RLock()
+	ready := s.rf4ShareLoaded
+	v, ok := s.rf4LureShare[fishKey]
+	s.rf4ShareMu.RUnlock()
+	if !ready || !ok {
+		return -1
+	}
+	return v
+}
+
 func (s *Server) loadRf4Share() {
 	defer s.rf4ShareLoading.Store(false)
 	ctx := s.dbCtx()
@@ -866,9 +906,14 @@ func (s *Server) loadRf4Share() {
 		minCnt = 1
 	}
 	totals := map[string]float64{}
+	lureTotals := map[string]float64{}
 	trows, err := s.DB.SQL.QueryContext(ctx, `
-		SELECT fish_key, count(*) FROM rf4records_catch
-		WHERE fish_key<>'' AND bait_id<>'' GROUP BY fish_key`)
+		SELECT r.fish_key, count(*),
+		       sum(CASE WHEN d.category = 17 THEN 1 ELSE 0 END)
+		FROM rf4records_catch r
+		LEFT JOIN item_def d ON d.item_id = r.bait_id
+		WHERE r.fish_key<>'' AND r.bait_id<>''
+		GROUP BY r.fish_key`)
 	if err != nil {
 		s.rf4ShareMu.Lock()
 		// 首次查询失败也置 loaded，避免每次判鱼都重试全表聚合；
@@ -883,9 +928,10 @@ func (s *Server) loadRf4Share() {
 	}
 	for trows.Next() {
 		var fk string
-		var n float64
-		if trows.Scan(&fk, &n) == nil {
+		var n, lures float64
+		if trows.Scan(&fk, &n, &lures) == nil {
 			totals[fk] = n
+			lureTotals[fk] = lures
 		}
 	}
 	_ = trows.Close()
@@ -928,7 +974,14 @@ func (s *Server) loadRf4Share() {
 		s.rf4ShareAt = time.Now()
 		return
 	}
+	lureShare := make(map[string]float64, len(totals))
+	for fk, tot := range totals {
+		if tot > 0 {
+			lureShare[fk] = 100 * lureTotals[fk] / tot
+		}
+	}
 	s.rf4ShareCache = cache
+	s.rf4LureShare = lureShare
 	s.rf4ShareLoaded = true
 	s.rf4ShareAt = time.Now()
 }
