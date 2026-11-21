@@ -614,15 +614,27 @@ func (s *Server) filterFishBaitSet(loc string, ids []string, keys []string, weig
 			}
 			// 拟饵门：非路亚鱼种偶尔也会咬一口拟饵，但那是极小概率。
 			// 规则里的「拟饵」是 category 17 全通配，会把草鱼、欧鳊这类
-			// 官方拟饵占比 1~4% 的鱼当成路亚目标整天刷。这里按官方占比分档：
-			// <1% 不给满档（降为同食性兜底），1~5% 满档但压到四分之一，
+			// 官方拟饵占比 1~4% 的鱼当成路亚目标整天刷。这里按官方占比
+			// 直接出池：<1% 不参与判鱼，1~5% 满档但压到四分之一，
 			// ≥5% 不干预——高占比的路亚鱼种手感不变。
+			// 注意必须 continue，只把 full 置 false 没用：后面还有
+			// share>=medium / companion 兜底几档会把它重新拉回池子里。
 			lureFactor := 1.0
-			if b.category == 17 {
+			// 该饵在官方纪录里对这条鱼已经有强证据（≥5%）时不看鱼种级占比：
+			// 具体到饵的证据永远优先于「这条鱼总体吃不吃拟饵」。
+			if b.category == 17 && share < strong {
+				// 双壳类与螯虾不吃移动的拟饵：官方纪录里它们确实有少量
+				// 拟饵渔获（多为微铅钩挂底误捕），直接放进判鱼池会让
+				// 亮片整天刷出河蚌、贻贝、螯虾。只排这三类，帝王蟹、
+				// 鱿鱼这类确实靠铁板/鱿鱼钩上的不排。
+				switch key {
+				case "freshwater_mussel", "dreissena", "crawfish":
+					continue
+				}
 				if ls := s.rf4LureShareOf(key); ls >= 0 {
 					switch {
 					case ls < 1:
-						full = false
+						continue
 					case ls < 5:
 						lureFactor = 0.25
 					}
