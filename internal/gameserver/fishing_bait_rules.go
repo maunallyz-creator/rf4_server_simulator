@@ -619,6 +619,16 @@ func (s *Server) filterFishBaitSet(loc string, ids []string, keys []string, weig
 			// ≥5% 不干预——高占比的路亚鱼种手感不变。
 			// 注意必须 continue，只把 full 置 false 没用：后面还有
 			// share>=medium / companion 兜底几档会把它重新拉回池子里。
+			// 「各类饵」是全通配，会把土豆、煮饵这类与食性无关的饵也算成合法，
+			// 让狗鱼、鲑鱼整天咬完全不属于自己的饵。只对「没有明确点名、纯靠
+			// 通配进来」的饵生效：官方纪录里这条鱼从未出现该饵，或占比低于
+			// 长尾阈值时出池；规则明确点名的饵不受影响。
+			wildcardOnly := allowed && len(r.allow) > 0 && !b.matchesAnyExcept(r.allow, "各类饵")
+			if wildcardOnly && grading && s.rf4FishTotalOf(key) >= 100 {
+				if !s.rf4BaitSeenFor(key, b.id) || (share >= 0 && share < tail) {
+					continue
+				}
+			}
 			lureFactor := 1.0
 			// 该饵在官方纪录里对这条鱼已经有强证据（≥5%）时不看鱼种级占比：
 			// 具体到饵的证据永远优先于「这条鱼总体吃不吃拟饵」。
@@ -770,6 +780,20 @@ func (b ruleBait) matchesAny(terms []string) bool {
 
 // baitAllowedByRule 判断一款饵是否在本条规则的允许名单里。
 // 当前轮换组的饵视为本轮主推，即使不在静态允许列表里。
+// matchesAnyExcept 与 matchesAny 相同，但跳过指定词条。
+// 用来区分「规则明确点名了这款饵」和「只是被『各类饵』通配扫进来」。
+func (b ruleBait) matchesAnyExcept(terms []string, skip string) bool {
+	for _, term := range terms {
+		if ruleName(term) == ruleName(skip) {
+			continue
+		}
+		if b.matches(term) {
+			return true
+		}
+	}
+	return false
+}
+
 func baitAllowedByRule(r fishBaitRule, b ruleBait, activeGroup []string) bool {
 	if len(r.allow) == 0 {
 		return false
@@ -908,6 +932,26 @@ func (s *Server) rf4LureShareOf(fishKey string) float64 {
 	return v
 }
 
+// rf4FishTotalOf 返回该鱼在官方纪录里的有效渔获总数；未就绪返回 0。
+func (s *Server) rf4FishTotalOf(fishKey string) float64 {
+	s.rf4ShareMu.RLock()
+	defer s.rf4ShareMu.RUnlock()
+	if !s.rf4ShareLoaded {
+		return 0
+	}
+	return s.rf4FishTotal[fishKey]
+}
+
+// rf4BaitSeenFor 表示官方纪录里这条鱼是否出现过这款饵（不限样本量）。
+func (s *Server) rf4BaitSeenFor(fishKey, baitID string) bool {
+	s.rf4ShareMu.RLock()
+	defer s.rf4ShareMu.RUnlock()
+	if !s.rf4ShareLoaded {
+		return false
+	}
+	return s.rf4BaitSeen[fishKey][baitID]
+}
+
 func (s *Server) loadRf4Share() {
 	defer s.rf4ShareLoading.Store(false)
 	ctx := s.dbCtx()
@@ -952,7 +996,7 @@ func (s *Server) loadRf4Share() {
 	rows, err := s.DB.SQL.QueryContext(ctx, `
 		SELECT fish_key, bait_id, count(*) FROM rf4records_catch
 		WHERE fish_key<>'' AND bait_id<>''
-		GROUP BY fish_key, bait_id HAVING count(*)>=?`, minCnt)
+		GROUP BY fish_key, bait_id`)
 	if err != nil {
 		s.rf4ShareMu.Lock()
 		if !s.rf4ShareLoaded {
@@ -964,6 +1008,7 @@ func (s *Server) loadRf4Share() {
 		return
 	}
 	cache := map[string]map[string]float64{}
+	seen := map[string]map[string]bool{}
 	for rows.Next() {
 		var fk, bid string
 		var cnt float64
@@ -971,6 +1016,13 @@ func (s *Server) loadRf4Share() {
 			tot := totals[fk]
 			if tot <= 0 {
 				continue
+			}
+			if seen[fk] == nil {
+				seen[fk] = map[string]bool{}
+			}
+			seen[fk][bid] = true
+			if cnt < float64(minCnt) {
+				continue // 样本不足的不进占比表，避免「1/2=50%」被当强证据
 			}
 			if cache[fk] == nil {
 				cache[fk] = map[string]float64{}
@@ -994,6 +1046,8 @@ func (s *Server) loadRf4Share() {
 	}
 	s.rf4ShareCache = cache
 	s.rf4LureShare = lureShare
+	s.rf4FishTotal = totals
+	s.rf4BaitSeen = seen
 	s.rf4ShareLoaded = true
 	s.rf4ShareAt = time.Now()
 }

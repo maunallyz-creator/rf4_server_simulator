@@ -80,7 +80,12 @@ type Server struct {
 	// 每条鱼对拟饵（item_def.category = 17）的官方占比，0~100。
 	// 拟饵门只用它来分档：低于阈值直接不给这条鱼派拟饵，
 	// 避免「拟饵」通配把草鱼、欧鳊这类偶然吃软饵的鱼当成路亚目标。
-	rf4LureShare    map[string]float64
+	rf4LureShare map[string]float64
+	// 同一次聚合顺带算出的两个索引，供「各类饵」通配的证据门使用：
+	// fish_key -> 该鱼的有效纪录总数；fish_key -> 出现过的 bait_id 集合。
+	// 占比缓存只保留样本量达标的饵，无法区分「没有纪录」和「纪录太少」。
+	rf4FishTotal    map[string]float64
+	rf4BaitSeen     map[string]map[string]bool
 	rf4ShareAt      time.Time
 	rf4ShareLoaded  bool
 	rf4ShareLoading atomic.Bool
