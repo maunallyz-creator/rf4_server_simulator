@@ -187,6 +187,7 @@ input[type=text]:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc
 .gate-card h2{margin:0 0 6px;font-size:18px;font-weight:650}
 .gate-card p{margin:0 0 20px;color:var(--muted);font-size:13px}
 
+.hero-actions .btn:not(.pri),.hero .btn:not(.pri){background:var(--surface);border-color:var(--line);color:var(--text)}
 #updateToast{position:fixed;right:20px;bottom:20px;z-index:50;max-width:360px;padding:12px 16px;border-radius:10px;background:var(--surface-3);border:1px solid var(--line-strong);box-shadow:0 12px 32px #0009;font-size:13px;opacity:0;transform:translateY(8px);transition:.2s;pointer-events:none}
 #updateToast.on{opacity:1;transform:none}
 #updateToast.warn{border-color:#e0a74366}
@@ -211,6 +212,206 @@ input[type=text]:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc
   .svc-table .hide-sm{display:none}
   .svc-table td,.svc-table th{padding:10px 12px}
 }
+
+/* ===== 换肤：与管理后台同一套「航拍」语言（纸面 + 墨字 + 金线 + 照片顶带）===== */
+@font-face{font-family:'KirakaraMaru';src:url('/admin/app/fonts/kirakara-min.woff2') format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:'KirakaraMaru';src:url('/admin/app/fonts/kirakara-bold-min.woff2') format('woff2');font-weight:700;font-display:swap}
+:root{
+  --bg:#e9e3d1;--surface:#fbf8ec;--surface-2:#efe9d8;--surface-3:#e3dcc7;
+  --line:rgba(15,26,22,.15);--line-strong:rgba(15,26,22,.28);
+  --text:#0f1a16;--text-2:#3c4a43;--muted:#6d7a72;
+  --accent:#a8762a;--accent-ink:#fffdf2;--accent-soft:rgba(168,118,42,.13);
+  --ok:#3f7f57;--ok-soft:rgba(63,127,87,.12);--warn:#a8762a;--warn-soft:rgba(168,118,42,.13);--bad:#b4483f;--bad-soft:rgba(180,72,63,.12);
+  --r:16px;--r-sm:10px;
+  --mono:ui-monospace,"Cascadia Mono","SF Mono",Consolas,monospace;
+  --display:'KirakaraMaru',system-ui,'Microsoft YaHei',sans-serif;
+}
+body{background:var(--bg);color:var(--text);font:14px/1.62 var(--display);-webkit-font-smoothing:antialiased;position:relative}
+/* 底色向照片靠：一层很淡的航拍照片铺满整页，白纸不再刺眼 */
+body::before{content:"";position:fixed;inset:0;background:url('/admin/app/bg-hero.jpg') no-repeat 50% 32%/cover;opacity:.085;pointer-events:none;z-index:0}
+.main{position:relative;z-index:1}
+.topbar{height:64px;gap:26px;padding:0 26px;border-bottom:0;
+  background:#0b1412 url('/admin/app/bg-hero.jpg') no-repeat 50% 42%/cover;
+  box-shadow:inset 0 -1px 0 rgba(255,255,255,.10)}
+.topbar::before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(6,12,10,.86) 0%,rgba(6,12,10,.62) 34%,rgba(6,12,10,.34) 100%);pointer-events:none}
+.topbar{position:relative}
+.topbar>*{position:relative;z-index:1}
+.brand{gap:12px;font-size:17px;font-weight:700;color:#fbfaf3;letter-spacing:.01em}
+.brand-mark{width:32px;height:32px;border-radius:50%;background:rgba(255,253,242,.14);color:#f6e6c2;border:1px solid rgba(255,253,242,.28)}
+.tabs{gap:6px;align-self:center}
+.tabs button{border:1px solid transparent;border-radius:999px;height:34px;padding:0 18px;font-size:14px;color:rgba(251,250,243,.72);font-weight:600;margin:0}
+.tabs button:hover{color:#fffdf2;background:rgba(255,253,242,.10)}
+.tabs button.on{background:#fbfaf3;color:#0f1a16;border-color:#fbfaf3;box-shadow:0 6px 18px -12px rgba(0,0,0,.6)}
+.health{color:rgba(251,250,243,.92);font-size:12.8px;padding:5px 12px 5px 10px;border:1px solid rgba(251,250,243,.3);border-radius:999px;background:rgba(251,250,243,.08)}
+.health .dot{width:7px;height:7px}
+.dot{background:rgba(251,250,243,.6)}
+.dot.ok{background:#8fd3a6;box-shadow:0 0 0 3px rgba(143,211,166,.22)}
+.dot.warn{background:#e6c07a;box-shadow:0 0 0 3px rgba(230,192,122,.22)}
+.dot.bad{background:#e08a80;box-shadow:0 0 0 3px rgba(224,138,128,.22)}
+
+.main{height:calc(100vh - 64px);background:var(--bg)}
+.page{max-width:1560px;padding:34px 30px 72px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 14px 30px -26px rgba(15,26,22,.55)}
+.section-title{margin:30px 0 10px}
+.section-title h2{margin:0;font:400 26px/1.3 var(--display);letter-spacing:.01em;color:var(--ink,#0f1a16)}
+.section-title span{font-size:13.2px;color:var(--muted)}
+
+.btn{height:36px;padding:0 16px;border-radius:10px;border:1px solid var(--line);
+  background:var(--surface);color:var(--text);font-weight:600;font-size:13.4px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.7)}
+.btn:hover{background:#fffdf2;border-color:color-mix(in srgb,var(--accent) 52%,var(--line))}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fffdf2;box-shadow:none}
+.btn.pri:hover{background:#b9852f;border-color:#b9852f}
+.btn.alt,.btn.ghost{background:transparent;border-color:var(--line);color:var(--muted);box-shadow:none}
+.btn.alt:hover,.btn.ghost:hover{background:var(--surface-2);border-color:var(--line);color:var(--text)}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.btn.ghost:hover{background:var(--surface-2);color:var(--text)}
+.btn.danger{background:transparent;border-color:rgba(180,72,63,.42);color:#b4483f}
+.btn.danger:hover{background:var(--bad-soft);border-color:#b4483f;color:#b4483f}
+.btn.lg{height:44px;padding:0 22px;font-size:15px;border-radius:11px}
+.btn.sm{height:30px;padding:0 11px;font-size:12px;border-radius:8px}
+
+.hero{padding:22px 24px;gap:22px}
+.hero-icon{background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+.hero[data-tone=ok] .hero-icon{background:var(--ok-soft);color:var(--ok);border-color:rgba(63,127,87,.28)}
+.hero[data-tone=warn] .hero-icon{background:var(--warn-soft);color:var(--warn);border-color:rgba(168,118,42,.30)}
+.hero[data-tone=bad] .hero-icon{background:var(--bad-soft);color:var(--bad);border-color:rgba(180,72,63,.30)}
+.hero-copy h1{margin:0;font:400 36px/1.22 var(--display);color:var(--text)}
+.hero-copy p{margin:4px 0 0;color:var(--muted);font-size:13.2px}
+
+.pill{height:22px;border-radius:999px;background:transparent;border:1px solid var(--line);
+  color:var(--muted);padding:0 9px;font-size:11.8px;font-weight:600}
+.pill::before{display:none}
+.pill.ok{border-color:rgba(63,127,87,.45);background:transparent;color:#3f7f57}
+.pill.warn{border-color:rgba(168,118,42,.5);background:transparent;color:#a8762a}
+.pill.bad{border-color:rgba(180,72,63,.5);background:transparent;color:#b4483f}
+.pill.idle{color:var(--muted)}
+
+.notice{border-radius:12px;font-size:13px}
+.notice.bad{background:rgba(180,72,63,.07);border-color:rgba(180,72,63,.3);color:#8f3b34}
+.notice.warn{background:rgba(168,118,42,.08);border-color:rgba(168,118,42,.32);color:#7d5720}
+.notice.ok{background:rgba(63,127,87,.08);border-color:rgba(63,127,87,.3);color:#2f6245}
+.notice.info{background:rgba(15,26,22,.05);border-color:var(--line);color:var(--text-2)}
+
+.update-banner{border-radius:12px;border:1px solid rgba(168,118,42,.35);background:rgba(168,118,42,.07);color:#6f4c17;font-size:13px;margin-bottom:18px}
+.update-banner.muted{border-color:var(--line);background:var(--surface);color:var(--muted)}
+.update-banner.warn{border-color:rgba(168,118,42,.45);background:rgba(168,118,42,.09);color:#6f4c17}
+
+input[type=text]{height:38px;border-radius:10px;border:1px solid var(--line-strong);background:#fffef7;
+  font-family:var(--mono);font-size:13.2px;color:var(--text);padding:0 12px}
+input[type=text]:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(168,118,42,.16)}
+input[type=checkbox]{accent-color:var(--accent)}
+
+.seg{background:var(--surface-2);border:1px solid var(--line);border-radius:999px;padding:3px}
+.seg button{border-radius:999px;height:28px;padding:0 14px;color:var(--muted);font-weight:600;font-size:12.8px}
+.seg button:hover{color:var(--text)}
+.seg button.on{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(15,26,22,.1)}
+
+.step{padding:24px 28px;border-top:1px solid var(--line-soft,rgba(15,26,22,.08))}
+.step:first-child{border-top:0}
+.step-mark{border:1.5px solid var(--line-strong);color:var(--muted);font-family:var(--display)}
+.step.done .step-mark{background:#3f7f57;border-color:#3f7f57;color:#fffdf2}
+.step.todo .step-mark{border-color:#a8762a;color:#a8762a}
+.step-head b{font-size:16.4px;font-weight:700}
+.step-desc{font-size:13.8px;color:var(--muted);margin-top:5px;line-height:1.66}
+.step-desc code,.path-hint code{font-family:var(--mono);font-size:11.8px;color:var(--text-2);background:var(--surface-2);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+.path-hint{color:var(--muted)}
+
+.tile{padding:18px 20px}
+.tile-head b{font-size:15px;font-weight:700}
+.tile p{font-size:12.6px;color:var(--muted);line-height:1.6}
+
+.menu-list{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 18px 40px -22px rgba(15,26,22,.5);padding:5px}
+.menu-list button{border-radius:8px;color:var(--text);font-size:13.2px}
+.menu-list button:hover{background:var(--surface-2)}
+.menu-list button.danger{color:#b4483f}
+
+.svc-table th{font-size:11.4px;letter-spacing:.06em;color:var(--muted);border-bottom:1px solid var(--line);padding:9px 16px;text-transform:none}
+.svc-table td{border-bottom:1px solid var(--line-soft,rgba(15,26,22,.08));font-size:13.2px}
+.svc-table tr:last-child td{border-bottom:0}
+.svc-name b{font-weight:700}
+.svc-name code{font-family:var(--mono);color:var(--muted);font-size:11.6px}
+.logbox{border-radius:16px}
+.log-toolbar{border-bottom:1px solid var(--line);background:transparent}
+.logs{background:var(--surface);border:0;border-top:1px solid var(--line)}
+.log{font-family:var(--mono);font-size:12.2px;line-height:1.72;color:var(--muted)}
+.log .ln{grid-template-columns:66px 46px minmax(0,1fr);gap:10px;padding:1px 16px}
+.log .ln:hover{background:var(--surface-2)}
+.log .t{color:var(--muted)}
+.log .lv.INFO{color:#7d8a83}.log .lv.WARN{color:#a8762a}.log .lv.ERROR{color:#b4483f}.log .lv.DEBUG{color:#8b968f}
+.log .m{color:var(--text-2)}
+.log .ln.WARN .m{color:#7d5720}.log .ln.ERROR .m{color:#8f3b34}
+
+.version-card{padding:18px 20px}
+.version-value strong{color:var(--text)}
+.version-note{color:var(--muted)}
+.version-connection.connected{color:#3f7f57}.version-connection.connected i{background:#3f7f57}
+.version-connection.checking{color:#a8762a}.version-connection.checking i{background:#a8762a}
+.version-connection.error{color:#b4483f}.version-connection.error i{background:#b4483f}
+
+.admin-gate{background:var(--bg)}
+.frame{background:var(--bg)}
+#updateToast{background:var(--surface);border:1px solid var(--line);color:var(--text);box-shadow:0 18px 40px -22px rgba(15,26,22,.5);border-radius:12px}
+
+::-webkit-scrollbar-thumb{background:rgba(15,26,22,.18);border:2px solid var(--bg);border-radius:10px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+
+/* 工作台 / 后台信息 / 开源声明 / 后台视图铺满 */
+.card.pad{padding:4px 20px 6px}
+table.wk{width:100%;border-collapse:collapse;font-size:14.4px}
+table.wk th{font-size:10.4px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-align:left;padding:10px 0;border-bottom:1px solid var(--line-strong);font-weight:600;white-space:nowrap}
+table.wk th.num{text-align:right}
+table.wk td{padding:14px 0;border-bottom:1px solid var(--line-soft);vertical-align:top}
+table.wk tr:last-child td{border-bottom:0}
+table.wk td.num{text-align:right;white-space:nowrap}
+table.wk b{display:block;font-weight:650;color:var(--text);font-size:15px}
+.mono{font:11.6px/1.5 var(--mono);color:var(--muted);margin-top:3px}
+.muted{color:var(--muted)}
+.ops{display:inline-flex;gap:6px;justify-content:flex-end}
+dl.info{margin:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 28px}
+dl.info>div{display:flex;justify-content:space-between;gap:14px;padding:9px 0;border-bottom:1px solid var(--line-soft)}
+dl.info dt{color:var(--muted);font-size:13.4px;white-space:nowrap}
+dl.info dd{margin:0;font-weight:600;font-size:14.2px;text-align:right}
+.notice.info.piracy{margin:18px 0 0;background:var(--surface-2);border:1px solid var(--line);color:var(--text-2);font-size:12.8px;line-height:1.65;padding:12px 16px;border-radius:12px}
+body.in-admin .topbar{display:none}
+body.in-admin .main{height:100vh}
+#backHome{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:40;display:none;height:36px;padding:0 16px;border-radius:999px;box-shadow:0 12px 30px -14px rgba(15,26,22,.6)}
+body.in-admin #backHome{display:inline-flex}
+
+/* 首页两栏：左边原有内容，右边使用说明 + 运行日志 */
+.page{max-width:1240px}
+.home-grid{display:grid;grid-template-columns:minmax(0,1fr) 404px;gap:30px;align-items:start}
+#view-control .page{display:grid;grid-template-columns:minmax(0,1fr) 470px;gap:40px;align-items:start;max-width:1560px}
+.home-main{min-width:0}
+.home-side{min-width:0;position:sticky;top:18px}
+.loginbox{padding:18px 20px;margin-bottom:24px}
+.loginbox p{margin:0 0 14px;font-size:13px;line-height:1.66;color:var(--text-2)}
+.loginbox .lrow{display:flex;gap:12px;flex-wrap:wrap}
+.loginbox .lrow label{display:flex;flex-direction:column;gap:6px;flex:1 1 140px;font-size:12.2px;color:var(--muted)}
+.loginbox input{height:40px;padding:0 12px;border-radius:10px;border:1px solid rgba(16,29,26,.28);background:#fffef7;color:var(--text);font:14px/1 var(--mono)}
+.loginbox input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(168,118,42,.18)}
+.loginbox .lact{display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}
+.loginbox .lact .muted{font-size:12.4px}
+.guide{padding:4px 20px 8px}
+.guide section{padding:15px 0;border-bottom:1px solid var(--line-soft)}
+.guide section:last-child{border-bottom:0}
+.guide h3{margin:0 0 5px;font-size:14.6px;font-weight:650;color:var(--text)}
+.guide p{margin:0;color:var(--text-2);font-size:13.6px;line-height:1.74}
+.guide code{font-family:var(--mono);font-size:11.6px;background:var(--surface-2);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+.log-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 8px}
+.log-bar .check{margin:0}
+.log-bar .seg button{padding:0 12px;height:30px;font-size:12.4px}
+.home-log{height:352px;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:6px 0;font:12px/1.72 var(--mono)}
+.home-log .ln{display:grid;grid-template-columns:60px 44px minmax(0,1fr);gap:8px;padding:1px 12px}
+.home-log .ln:hover{background:var(--surface-2)}
+.home-log .t{color:var(--muted)}
+.home-log .lv{font-size:10.2px;font-weight:700;letter-spacing:.03em;color:var(--muted)}
+.home-log .lv.INFO{color:#7d8a83}.home-log .lv.WARN{color:#a8762a}.home-log .lv.ERROR{color:#b4483f}
+.home-log .m{color:var(--text-2);word-break:break-word;white-space:pre-wrap}
+.home-log .ln.WARN .m{color:#7d5720}.home-log .ln.ERROR .m{color:#8f3b34}
+@media (max-width:1180px){.home-grid,#view-control .page{grid-template-columns:minmax(0,1fr)}.home-side{position:static}}
 </style>
 </head>
 <body>
@@ -222,7 +423,6 @@ input[type=text]:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc
   <nav class="tabs" role="tablist" aria-label="页面">
     <button id="tab-control" class="on" role="tab" aria-selected="true" onclick="showView('control')">首页</button>
     <button id="tab-admin" role="tab" aria-selected="false" onclick="showView('admin')">管理后台</button>
-    <button id="tab-diag" role="tab" aria-selected="false" onclick="showView('diag')">诊断</button>
   </nav>
   <div class="health" title="服务器状态"><i class="dot" id="dot"></i><span id="healthText">正在连接…</span></div>
 </header>
@@ -231,6 +431,7 @@ input[type=text]:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc
   <!-- 首页：只回答「现在能不能玩、还差什么」 -->
   <section id="view-control" class="view scroll on" role="tabpanel">
     <div class="page">
+      <div class="home-main">
       <div class="update-banner" id="updateBanner" hidden>
         <span id="updateText"></span>
         <span class="update-actions">
@@ -305,12 +506,35 @@ input[type=text]:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc
         </div>
       </div>
 
+      <div class="section-title"><h2>服务器工作台</h2><span id="wkSummary" class="pill idle">读取中</span></div>
+      <div class="card pad">
+        <table class="wk">
+          <thead><tr><th>组件</th><th>状态</th><th class="num">已运行</th><th class="num">自动重启</th><th class="num">操作</th></tr></thead>
+          <tbody id="wkBody"><tr><td colspan="5" class="muted">正在读进程列表…</td></tr></tbody>
+        </table>
+      </div>
+
+      <div class="section-title"><h2>后台信息</h2><span id="infoHint" class="pill idle">未读取</span></div>
+      <div class="card pad">
+        <dl class="info">
+          <div><dt>管理后台</dt><dd><a href="#admin" onclick="showView('admin');return false">/admin/</a></dd></div>
+          <div><dt>后台账号</dt><dd id="infoUser">admin</dd></div>
+          <div><dt>服务地址</dt><dd id="infoHost">127.0.0.1:9500</dd></div>
+          <div><dt>可调参数</dt><dd id="infoTunables">—</dd></div>
+          <div><dt>档案 / 物品</dt><dd id="infoCounts">—</dd></div>
+          <div><dt>邮件 / 审计</dt><dd id="infoCounts2">—</dd></div>
+        </dl>
+        <p class="hint">这些数字是服务器库的只读统计，每 30 秒随状态一起刷新；要改内容请进管理后台。</p>
+      </div>
+
+      <div class="notice info piracy">本项目免费开源，作者未收取任何费用，谨防被骗，四个QQ交流群：379233540、225460820、1128152596、1134665746</div>
+
       <div class="section-title"><h2>更多</h2></div>
       <div class="tiles">
         <div class="card tile">
           <div class="tile-head"><b>诊断与日志</b></div>
-          <p>查看各服务组件的运行状态、实时日志和版本信息，遇到问题时可以复制日志反馈。</p>
-          <div class="row"><button class="btn" onclick="showView('diag')">打开诊断</button></div>
+          <p>各服务组件的运行状态和实时日志已经并到管理后台的「总览」页底部，遇到问题时可以去那里复制日志。</p>
+          <div class="row"><a class="btn" href="#admin" onclick="openAdminDiag();return false">去看诊断</a></div>
         </div>
         <div class="card tile">
           <div class="tile-head"><b>管理后台</b></div>
@@ -318,6 +542,77 @@ input[type=text]:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc
           <div class="row"><button class="btn" onclick="showView('admin')">打开管理后台</button></div>
         </div>
       </div>
+      </div><!-- /home-main -->
+
+      <aside class="home-side">
+        <div class="section-title"><h2>管理后台登录</h2><span class="pill" id="adState">未登录</span></div>
+        <div class="card loginbox">
+          <p>登录后才能改玩家数据、保存设置。不登录也能看总览、商店、参数、水域这些页面，玩家管理会拦着。</p>
+          <div class="lrow">
+            <label>账号<input id="adUser" value="admin" autocomplete="username"></label>
+            <label>密码<input id="adPass" type="password" autocomplete="current-password" placeholder="见 config.yaml"></label>
+          </div>
+          <div class="lact">
+            <button class="btn pri" id="adLogin" onclick="adminLogin()">登录</button>
+            <a class="btn ghost" href="#admin" onclick="showView('admin');return false">打开管理后台</a>
+            <span class="muted" id="adHint">账号密码在 config.yaml 的 admin 段</span>
+          </div>
+        </div>
+        <div class="section-title"><h2>使用说明</h2><span class="pill">照着做就行</span></div>
+        <div class="card guide">
+          <section>
+            <h3>1 · 先确认「游戏本体路径」</h3>
+            <p>首页最上面会显示它读到的 <code>rf4_x64.exe</code> 路径。路径不对就在下面点「更换路径」重新选一次；选对了「开始游戏」按钮才会亮。</p>
+          </section>
+          <section>
+            <h3>2 · 点「开始游戏」</h3>
+            <p>它会先拉起 <code>gameserver</code>（游戏逻辑）和 <code>gateway</code>（登录与连接），再启动游戏本体。两个组件都显示「运行中」再进游戏；启动大约十几秒，首次启动更长。</p>
+          </section>
+          <section>
+            <h3>3 · 连本地服务器还是官方</h3>
+            <p>「让游戏连到本地服务器」里选本地，游戏登录时会连到这台电脑；想回官方服就切回官方，然后重新登录游戏。切换只改本机 hosts，不改游戏文件。</p>
+          </section>
+          <section>
+            <h3>4 · 管理后台能做什么</h3>
+            <p>点顶栏「管理后台」：改角色等级/货币/背包、调整每个商店的覆盖价、设置各水域出什么鱼、改钓鱼手感参数、给玩家发邮件、看审计日志。账号是 <code>admin</code>，密码在 <code>config.yaml</code> 的 <code>admin.password</code>。</p>
+          </section>
+          <section>
+            <h3>5 · 出问题了看哪里</h3>
+            <p>右侧「运行日志」就是两个组件的标准输出；管理后台「总览」页底部也有一份，带「只看警告和错误」和复制。重启服务会让正在游戏的玩家掉线。</p>
+          </section>
+          <section>
+            <h3>6 · 存档与备份</h3>
+            <p>角色数据都在本目录的 <code>data/rf4server.db</code>，复制这个文件就是完整备份；换版本前先备份它。</p>
+          </section>
+        </div>
+
+        <div class="section-title"><h2>运行日志</h2><span id="logHint" class="pill idle">读取中</span></div>
+        <div class="log-bar">
+          <div class="seg" role="tablist">
+            <button id="logTabGameserver" class="on" role="tab" onclick="selectLog('gameserver')">游戏逻辑</button>
+            <button id="logTabGateway" role="tab" onclick="selectLog('gateway')">登录与连接</button>
+          </div>
+          <label class="check"><input type="checkbox" id="logOnlyBad" onchange="renderHomeLogs()"> 只看警告和错误</label>
+          <button class="btn ghost sm" onclick="refreshHomeLogs(true)">刷新</button>
+          <button class="btn ghost sm" onclick="copyHomeLogs()">复制</button>
+        </div>
+        <div class="home-log" id="logs"><div class="ln"><span class="m">正在读日志…</span></div></div>
+        <div class="section-title" style="margin-top:26px"><h2>版本与更新</h2></div>
+        <div class="card version-card" id="versionCard">
+          <div class="version-main">
+            <span class="version-connection" id="versionConnection"><i></i><span id="versionConnectionText">等待检查</span></span>
+            <div class="version-values">
+              <div class="version-value"><span>正在运行</span><strong id="currentVersion">读取中…</strong></div>
+              <div class="version-value"><span>最新发布</span><strong id="latestVersion">读取中…</strong></div>
+            </div>
+            <div class="version-note" id="versionNote">正在读取版本信息…</div>
+          </div>
+          <div class="version-links">
+            <a class="btn" href="https://gh-proxy.com/https://github.com/OpenFisherCommunity/rf4_server_simulator/releases" target="_blank" rel="noreferrer">发布页（国内加速）</a>
+            <a class="btn alt" href="https://github.com/OpenFisherCommunity/rf4_server_simulator/releases" target="_blank" rel="noreferrer">GitHub 发布页</a>
+          </div>
+        </div>
+      </aside>
     </div>
   </section>
 
@@ -333,51 +628,14 @@ input[type=text]:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc
     <iframe id="adminFrame" class="frame" title="管理后台" src="about:blank"></iframe>
   </section>
 
-  <!-- 诊断：给排查问题和反馈 bug 用 -->
-  <section id="view-diag" class="view scroll" role="tabpanel">
-    <div class="page">
-      <div class="section-title" style="margin-top:0"><h2>服务组件</h2><span>服务器由下面几个程序组成，通常不需要单独操作</span></div>
-      <div class="card"><table class="svc-table"><thead><tr><th>组件</th><th>状态</th><th class="hide-sm">已运行</th><th class="hide-sm">自动重启</th><th></th></tr></thead><tbody id="cards"></tbody></table></div>
-
-      <div class="section-title"><h2>运行日志</h2><span>遇到问题反馈时，请附上这里的内容</span></div>
-      <div class="card logbox">
-        <div class="log-toolbar">
-          <div class="seg" id="logTabs"></div>
-          <label class="check"><input type="checkbox" id="onlyIssues" onchange="applyLogFilter()">只看警告和错误</label>
-          <span class="spacer"></span>
-          <button class="btn ghost sm" onclick="copyLog()">复制日志</button>
-        </div>
-        <div class="logs" id="logs"></div>
-      </div>
-
-      <div class="section-title"><h2>版本</h2></div>
-      <div class="card version-card" id="versionCard">
-        <div class="version-main">
-          <span class="version-connection" id="versionConnection"><i></i><span id="versionConnectionText">等待检查</span></span>
-          <div class="version-values">
-            <div class="version-value"><span>正在运行</span><strong id="currentVersion">读取中…</strong></div>
-            <div class="version-value"><span>最新发布</span><strong id="latestVersion">读取中…</strong></div>
-          </div>
-          <div class="version-note" id="versionNote">正在读取版本信息…</div>
-        </div>
-        <div class="version-links">
-          <a class="btn" href="https://gh-proxy.com/https://github.com/OpenFisherCommunity/rf4_server_simulator/releases" target="_blank" rel="noreferrer">发布页（国内加速）</a>
-          <a class="btn alt" href="https://github.com/OpenFisherCommunity/rf4_server_simulator/releases" target="_blank" rel="noreferrer">GitHub 发布页</a>
-        </div>
-      </div>
-    </div>
-  </section>
 </main>
 
 <script>
 const NAMES = ["gameserver","gateway"];
 const SERVICE_LABELS = {gameserver:"游戏逻辑", gateway:"登录与连接"};
 const SERVICE_DESC = {gameserver:"钓鱼、背包、任务等玩法都在这里计算", gateway:"处理游戏登录，把游戏连接转给游戏逻辑"};
-const logState = {};
-let logsReady = false;
 let lastStatus = null;
 let gamePathDirty = false;
-let activeLog = NAMES[0];
 let currentView = viewFromHash();
 
 const ICONS = {
@@ -391,14 +649,14 @@ const ICONS = {
 
 function viewFromHash(){
   if(location.hash === "#admin") return "admin";
-  if(location.hash === "#diag" || location.hash === "#logs") return "diag";
+  if(location.hash === "#diag" || location.hash === "#logs") return "admin";
   return "control";
 }
 
 function showView(name, updateHash=true){
-  if(!["admin","diag"].includes(name)) name = "control";
+  if(!["admin"].includes(name)) name = "control";
   currentView = name;
-  for(const v of ["control","admin","diag"]){
+  for(const v of ["control","admin"]){
     document.getElementById("view-"+v).classList.toggle("on", v === name);
     const tab = document.getElementById("tab-"+v);
     tab.classList.toggle("on", v === name);
@@ -408,9 +666,9 @@ function showView(name, updateHash=true){
     const hash = "#" + name;
     if(location.hash !== hash) history.replaceState(null, "", hash);
   }
+  document.body.classList.toggle("in-admin", name === "admin");
   closeMenu();
   syncAdminFrame();
-  if(name === "diag" && lastStatus) NAMES.forEach(pullLogs);
 }
 
 async function refresh(){
@@ -420,9 +678,9 @@ async function refresh(){
     const st = await r.json();
     lastStatus = st;
     renderStatus(st);
-    if(!logsReady){ renderLogs(); logsReady = true; }
-    if(currentView === "diag") for(const n of NAMES) pullLogs(n);
     syncAdminFrame();
+    refreshInfo();
+    if(currentView === "control") refreshHomeLogs();
   }catch(e){
     lastStatus = null;
     renderOffline();
@@ -456,11 +714,197 @@ function renderStatus(st){
   renderGameConfig(st);
   renderHosts(st);
   renderHero(st);
-  renderServices(st);
   renderSteps(st);
+  renderWorkbench(st);
   const err = document.getElementById("lastError");
-  if(st.last_error){ err.hidden = false; err.innerHTML = '<span class="grow"></span><button class="btn ghost sm" onclick="showView(\'diag\')">查看日志</button>'; err.querySelector(".grow").textContent = "最近一次出错：" + st.last_error; }
+  if(st.last_error){ err.hidden = false; err.innerHTML = '<span class="grow"></span><button class="btn ghost sm" onclick="openAdminDiag()">查看日志</button>'; err.querySelector(".grow").textContent = "最近一次出错：" + st.last_error; }
   else err.hidden = true;
+}
+
+let lastOverview = null;
+
+function appRowsHTML(){
+  const o = lastOverview;
+  if(!o) return "";
+  const rows = [
+    ["管理后台", "/admin/ · 本页", "运行中", "ok"],
+    ["玩家数据库", o.ready ? "已连接" : "未就绪", o.ready ? "ok" : "warn"],
+    ["可调参数", (o.tunables || 0) + " 项", "已加载", "ok"],
+    ["物品目录", (o.items || 0) + " 件 · 档案 " + (o.players || 0), "已加载", "ok"],
+  ];
+  return rows.map(r => '<tr><td><b>' + esc(r[0]) + '</b><div class="mono">' + esc(r[1]) + '</div></td>' +
+    '<td><span class="pill ' + r[3] + '">' + esc(r[2]) + '</span></td>' +
+    '<td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>').join("");
+}
+
+function renderWorkbench(st){
+  lastStatus = st;
+  const body = document.getElementById("wkBody");
+  const sum = document.getElementById("wkSummary");
+  if(!body || !sum) return;
+  const procs = (st && st.procs) || [];
+  if(!st){
+    sum.className = "pill bad"; sum.textContent = "连不上";
+    body.innerHTML = '<tr><td colspan="5" class="muted">读不到进程列表：控制面板和服务器可能都没在跑。</td></tr>';
+    return;
+  }
+  if(!procs.length){
+    sum.className = "pill warn"; sum.textContent = "准备中";
+    body.innerHTML = '<tr><td colspan="5" class="muted">进程还没起来，稍等几秒。</td></tr>';
+    return;
+  }
+  const ok = procs.filter(p => p.state === "running").length;
+  sum.className = "pill " + (ok === procs.length ? "ok" : ok ? "warn" : "bad");
+  sum.textContent = ok === procs.length ? "全部运行中" : ok + "/" + procs.length + " 运行中";
+  const text = {running:"运行中", starting:"启动中", backoff:"重试中", stopping:"停止中", stopped:"已停止", failed:"已崩溃"};
+  const tone = {running:"ok", starting:"busy", backoff:"warn", stopping:"busy", stopped:"idle", failed:"bad"};
+  body.innerHTML = procs.map(p => {
+    const label = SERVICE_LABELS[p.name] || p.name;
+    const running = p.state === "running";
+    const sub = p.name + (p.pid ? " · pid " + p.pid : "");
+    const ops = '<span class="ops">' +
+      '<button class="btn ghost sm" onclick="act(\'' + (running ? "restart" : "start") + '\',\'' + esc(p.name) + '\')">' + (running ? "重启" : "启动") + '</button>' +
+      (running ? '<button class="btn ghost sm" onclick="act(\'stop\',\'' + esc(p.name) + '\')">停止</button>' : "") +
+      '</span>';
+    return '<tr><td><b>' + esc(label) + '</b><div class="mono">' + esc(sub) + '</div></td>' +
+      '<td><span class="pill ' + (tone[p.state] || "idle") + '">' + esc(text[p.state] || p.state) + '</span></td>' +
+      '<td class="num">' + esc(humanUptime(p.uptime_s)) + '</td>' +
+      '<td class="num">' + esc(String(p.restarts || 0)) + '</td>' +
+      '<td class="num">' + ops + '</td></tr>';
+  }).join("") + appRowsHTML();
+}
+
+let logName = "gameserver";
+let homeLogLines = [];
+
+function selectLog(name){
+  logName = name;
+  const g = document.getElementById("logTabGameserver"), w = document.getElementById("logTabGateway");
+  if(g) g.classList.toggle("on", name === "gameserver");
+  if(w) w.classList.toggle("on", name === "gateway");
+  refreshHomeLogs(true);
+}
+
+function parseHomeLog(line){
+  let str = String(line);
+  let t = "", lv = "", msg = str;
+  const tm = str.match(/^(\d{2}:\d{2}:\d{2})/);
+  if(tm){ t = tm[1]; str = str.slice(tm[1].length).trim(); }
+  const lm = str.match(/\blevel=([A-Z]+)\b/);
+  if(lm) lv = (lm[1] === "WARNING" ? "WARN" : lm[1]);
+  const mm = str.match(/\bmsg=(.*)$/);
+  if(mm) msg = mm[1];
+  else {
+    msg = str.replace(/^\[[^\]]+\]\s*/, "").replace(/\btime=\S+/, "").replace(/\blevel=\w+/, "").trim() || str;
+  }
+  msg = msg.replace(/^"(.*)"$/s, "$1").trim();
+  return { t: t, lv: lv, m: msg };
+}
+
+function renderHomeLogs(){
+  const box = document.getElementById("logs");
+  if(!box) return;
+  const onlyBad = document.getElementById("logOnlyBad");
+  const rows = homeLogLines.map(parseHomeLog).filter((r) => !(onlyBad && onlyBad.checked) || r.lv === "WARN" || r.lv === "ERROR");
+  if(!rows.length){
+    box.innerHTML = '<div class="ln"><span class="m">' + (homeLogLines.length ? "没有警告或错误。" : "这个组件还没有输出。") + '</span></div>';
+    return;
+  }
+  // 内存里每个组件保留最近 800 行（internal/supervisor/supervisor.go: ringLines = 800），
+  // 这里不再二次截断，直接画满，行数由上面的 pill 标出来。
+  box.innerHTML = rows.map((r) =>
+    '<div class="ln ' + esc(r.lv) + '"><span class="t">' + esc(r.t) + '</span><span class="lv">' + esc(r.lv) + '</span><span class="m">' + esc(r.m) + '</span></div>').join("");
+  box.scrollTop = box.scrollHeight;
+}
+
+async function refreshHomeLogs(force){
+  if(!document.getElementById("logs")) return;
+  if(currentView !== "control" && !force) return;
+  const hint = document.getElementById("logHint");
+  try{
+    const r = await fetch("/api/logs?name=" + encodeURIComponent(logName) + "&since=0", {cache: "no-store"});
+    const j = await r.json();
+    homeLogLines = (j && j.lines) || [];
+    renderHomeLogs();
+    if(hint){ hint.className = "pill ok"; hint.textContent = homeLogLines.length + " 行 · 内存里保留最近 800 行"; }
+  }catch(e){
+    if(hint){ hint.className = "pill bad"; hint.textContent = "读不到"; }
+  }
+}
+
+function copyHomeLogs(){
+  const text = homeLogLines.join("\n");
+  if(!text) return;
+  navigator.clipboard.writeText(text).then(() => {
+    const hint = document.getElementById("logHint");
+    if(hint){ hint.textContent = "已复制"; hint.className = "pill ok"; }
+  }).catch(() => {});
+}
+
+// 登录状态与 /admin/ 共用同一个 localStorage key（同源 9500）。
+function adminTokenState(){
+  try { return localStorage.getItem("rf4_admin_token") || ""; } catch(e) { return ""; }
+}
+function paintAdminLogin(on){
+  const el = document.getElementById("adState");
+  const hint = document.getElementById("adHint");
+  if(!el) return;
+  el.textContent = on ? "已登录" : "未登录";
+  el.className = on ? "pill ok" : "pill";
+  if(hint){ hint.className = "muted"; hint.textContent = on ? "管理后台里可以直接编辑" : "账号密码在 config.yaml 的 admin 段"; }
+}
+async function adminLogin(){
+  const u = document.getElementById("adUser");
+  const p = document.getElementById("adPass");
+  const hint = document.getElementById("adHint");
+  if(!p || !p.value){ if(hint){ hint.className = "muted bad"; hint.textContent = "先填密码"; } return; }
+  const btn = document.getElementById("adLogin");
+  if(btn) btn.disabled = true;
+  try{
+    const r = await fetch("/admin/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: (u && u.value || "").trim(), password: p.value }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if(!r.ok || !d.token){
+      if(hint){ hint.className = "muted bad"; hint.textContent = (d && d.error) || ("登录失败（HTTP " + r.status + "）"); }
+      return;
+    }
+    try { localStorage.setItem("rf4_admin_token", d.token); } catch(e) {}
+    if(p) p.value = "";
+    paintAdminLogin(true);
+    // iframe 里的后台是登录之前就加载的，令牌换成新的时候要让它重新读一遍。
+    const frame = document.getElementById("adminFrame");
+    if(frame && frame.dataset.loaded === "1"){
+      try{ frame.contentWindow.location.reload(); }catch(e){}
+    }
+  }catch(e){
+    if(hint){ hint.className = "muted bad"; hint.textContent = "连不上管理后台"; }
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+}
+async function refreshInfo(){
+  const hint = document.getElementById("infoHint");
+  try{
+    const r = await fetch("/api/overview", {cache:"no-store"});
+    const j = await r.json();
+    lastOverview = j;
+    if(typeof renderWorkbench === "function") renderWorkbench(lastStatus);
+    document.getElementById("infoUser").textContent = j.admin_user || "admin";
+    document.getElementById("infoHost").textContent = j.host || "127.0.0.1:9500";
+    if(j.ready){
+      document.getElementById("infoTunables").textContent = (j.tunables || 0) + " 项";
+      document.getElementById("infoCounts").textContent = (j.players || 0) + " / " + (j.items || 0);
+      document.getElementById("infoCounts2").textContent = (j.mails || 0) + " / " + (j.audits || 0);
+      hint.className = "pill ok"; hint.textContent = "已读取";
+    }else{
+      hint.className = "pill warn"; hint.textContent = "库未就绪";
+    }
+  }catch(e){
+    if(hint){ hint.className = "pill bad"; hint.textContent = "读不到"; }
+  }
 }
 
 function renderHero(st){
@@ -498,7 +942,7 @@ function renderHero(st){
   }else if(s.key === "failed" || s.key === "partial"){
     const bad = s.procs.filter(p => p.state !== "running").map(p => SERVICE_LABELS[p.name] || p.name);
     title.textContent = "服务器有部分功能没有运行";
-    text.textContent = "「" + bad.join("」「") + "」没有正常运行。可以先试试重启；如果反复出现，请到「诊断」查看日志。";
+    text.textContent = "「" + bad.join("」「") + "」没有正常运行。可以先试试重启；如果反复出现，请到管理后台「总览」页底部看日志。";
     primary.textContent = "重启服务器"; primary.dataset.mode = "restart"; primary.disabled = false;
   }else{
     title.textContent = "连接不上本地服务器";
@@ -538,37 +982,7 @@ function renderSteps(st){
   document.getElementById("stepsSummary").textContent = st ? (done === 3 ? "全部完成" : `已完成 ${done}/3`) : "状态读取中断";
 }
 
-function renderServices(st){
-  const tbody = document.getElementById("cards");
-  if (!st) { tbody.innerHTML = '<tr><td colspan="5" class="muted">连接中断，暂时无法读取服务状态。</td></tr>'; return; }
-  const procs = st.procs || [];
-  if(!procs.length){
-    tbody.innerHTML = '<tr><td colspan="5" class="muted">首次启动，正在导入数据库和游戏资料，请稍候…</td></tr>';
-    return;
-  }
-  const rows = procs.map(p => {
-    const [label, tone] = procLabel(p.state);
-    return `<tr><td class="svc-name"><b>${SERVICE_LABELS[p.name] || p.name}</b><code>${p.name}</code>
-        <div class="build" title="进程自报的构建版本">版本 ${esc(buildText(p))}${p.pid ? " · PID " + p.pid : ""}</div>
-        ${p.exe_changed ? `<div class="svc-warn">磁盘上的程序文件已更新，重启这个组件后才会用上新版本。</div>` : ""}</td>
-      <td><span class="pill ${tone}">${label}</span></td>
-      <td class="svc-meta hide-sm">${p.state === "running" ? humanUptime(p.uptime_s) : "—"}</td>
-      <td class="svc-meta hide-sm">${p.restarts || 0} 次</td>
-      <td><div class="svc-ops">${opsButtons(p.name, p.state)}</div></td></tr>`;
-  });
-  tbody.innerHTML = rows.join("");
-}
-
-function procLabel(state){
-  return {running:["运行中","ok"], starting:["启动中","warn"], backoff:["等待重启","warn"], stopped:["已停止","idle"], failed:["失败","bad"]}[state] || [state || "未知","idle"];
-}
-
-function opsButtons(name, state){
-  const running = state === "running" || state === "starting" || state === "backoff";
-  return running
-    ? `<button class="btn ghost sm" onclick="act('restart','${name}')">重启</button><button class="btn ghost sm danger" onclick="act('stop','${name}')">停止</button>`
-    : `<button class="btn sm" onclick="act('start','${name}')">启动</button>`;
-}
+function openAdminDiag(){ openAdmin('dashboard'); }
 
 function openAdmin(page){
   const frame = document.getElementById("adminFrame");
@@ -650,6 +1064,12 @@ function renderVersionCard(st){
       noteText = u ? "你正在使用最新版本。" : "更新服务已连接。";
     }
     if(health.checked_at) noteText += ` 检查于 ${formatVersionTime(health.checked_at)}`;
+  }else if(health && String(health.error || "").includes("BuildTs")){
+    // 源码直编的本地构建没有 BuildTs，更新检测会直接跳过，不该显示成失败。
+    mode = "waiting";
+    label = "本地构建";
+    noteText = "自己编译的版本没有构建时间戳，跳过更新检测，不影响使用。";
+    latestEl.textContent = "跳过检测";
   }else if(health && health.error){
     mode = "error";
     label = "检查更新失败";
@@ -772,7 +1192,6 @@ function renderOffline(){
   renderHosts(null);
   renderHero(null);
   renderVersionCard(null);
-  renderServices(null);
   renderSteps(null);
   syncAdminFrame();
 }
@@ -926,74 +1345,6 @@ async function retryAdmin(){
   }
 }
 
-// ---- 日志：结构化显示 slog 文本行 ----
-function renderLogs(){
-  document.getElementById("logTabs").innerHTML = NAMES.map(n =>
-    `<button data-log="${n}" class="${n === activeLog ? "on" : ""}" onclick="selectLog('${n}')">${SERVICE_LABELS[n]}</button>`).join("");
-  document.getElementById("logs").innerHTML = NAMES.map(n =>
-    `<div class="log ${n === activeLog ? "on" : ""}" id="log-${n}" data-raw=""><div class="log-empty">还没有日志</div></div>`).join("");
-  NAMES.forEach(n => { logState[n] = {next:0, raw:[], el:document.getElementById("log-"+n)}; });
-  applyLogFilter();
-}
-
-function selectLog(name){
-  activeLog = name;
-  document.querySelectorAll("#logTabs button").forEach(b => b.classList.toggle("on", b.dataset.log === name));
-  document.querySelectorAll(".log").forEach(el => el.classList.toggle("on", el.id === "log-" + name));
-  const el = logState[name] && logState[name].el;
-  if(el) el.scrollTop = el.scrollHeight;
-}
-
-function applyLogFilter(){
-  const only = document.getElementById("onlyIssues").checked;
-  document.querySelectorAll(".log").forEach(el => el.classList.toggle("only-issues", only));
-}
-
-// 行格式：「HH:MM:SS time=... level=INFO msg="..." k=v」或「HH:MM:SS [name] 文本」
-function parseLogLine(line){
-  const m = /^(\d\d:\d\d:\d\d)\s+(.*)$/.exec(line);
-  let time = "", rest = line;
-  if(m){ time = m[1]; rest = m[2]; }
-  const lv = /(?:^|\s)level=(\w+)/.exec(rest);
-  if(!lv) return {time, level:"", msg:rest.replace(/^\[\w+\]\s*/, ""), kv:""};
-  const level = lv[1].toUpperCase();
-  const msgM = /(?:^|\s)msg=("(?:[^"\\]|\\.)*"|\S+)/.exec(rest);
-  let msg = msgM ? msgM[1] : "";
-  if(msg.startsWith('"')){ try{ msg = JSON.parse(msg); }catch(e){ msg = msg.slice(1,-1); } }
-  let kv = rest;
-  for(const cut of [/(?:^|\s)time=\S+/, /(?:^|\s)level=\w+/, /(?:^|\s)msg=("(?:[^"\\]|\\.)*"|\S+)/]) kv = kv.replace(cut, "");
-  return {time, level, msg, kv:kv.trim()};
-}
-
-function logLineHTML(line){
-  const p = parseLogLine(line);
-  const lv = p.level === "WARNING" ? "WARN" : p.level;
-  return `<div class="ln ${lv}"><span class="t">${esc(p.time)}</span><span class="lv ${lv}">${esc(lv)}</span><span class="m">${esc(p.msg)}${p.kv ? ` <span class="kv">${esc(p.kv)}</span>` : ""}</span></div>`;
-}
-
-async function pullLogs(name){
-  const slot = logState[name];
-  if(!slot) return;
-  try{
-    const r = await (await fetch(`/api/logs?name=${name}&since=${slot.next}`, {cache:"no-store"})).json();
-    if(r.lines && r.lines.length){
-      const el = slot.el;
-      const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-      slot.raw = slot.raw.concat(r.lines).slice(-400);
-      el.innerHTML = slot.raw.map(logLineHTML).join("");
-      if(atBottom || slot.next === 0) el.scrollTop = el.scrollHeight;
-    }
-    slot.next = r.next || slot.next;
-  }catch(e){}
-}
-
-async function copyLog(){
-  const slot = logState[activeLog];
-  const text = slot ? slot.raw.join("\n") : "";
-  try{ await navigator.clipboard.writeText(text); setGameNotice("", ""); toastLite("已复制 " + SERVICE_LABELS[activeLog] + " 的日志"); }
-  catch(e){ toastLite("复制失败，请手动选择日志文字复制"); }
-}
-
 function toastLite(text){
   let t = document.getElementById("updateToast");
   if(!t){ t = document.createElement("div"); t.id = "updateToast"; document.body.appendChild(t); }
@@ -1019,7 +1370,7 @@ document.addEventListener("click", closeMenu);
 
 async function act(action, name){
   closeMenu();
-  if(action === "stop" && name === "" && !confirm("停止服务器后，正在游戏中的玩家会掉线。确定停止吗？")) return;
+  if(action === "stop" && !confirm("停止后正在游戏中的玩家会掉线。确定停止吗？")) return;
   try{
     const r = await fetch(`/api/${action}?name=${encodeURIComponent(name)}`, {method:"POST"});
     if(!r.ok) throw new Error(await readAPIError(r, "操作失败"));
@@ -1031,6 +1382,7 @@ async function act(action, name){
 
 window.addEventListener("hashchange", () => showView(viewFromHash(), false));
 showView(currentView, false);
+paintAdminLogin(!!adminTokenState());
 refresh();
 setInterval(refresh, 2000);
 </script>

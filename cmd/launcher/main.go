@@ -137,6 +137,7 @@ func main() {
 		_, _ = w.Write(panelHTML)
 	})
 	mux.HandleFunc("/api/status", app.handleStatus)
+	mux.HandleFunc("/api/overview", app.handleOverview)
 	mux.HandleFunc("/api/logs", app.handleLogs)
 	mux.HandleFunc("/api/start", app.actionHandler("start"))
 	mux.HandleFunc("/api/stop", app.actionHandler("stop"))
@@ -375,6 +376,48 @@ func (a *app) handleStatus(w http.ResponseWriter, _ *http.Request) {
 		"update":          update,
 		"update_status":   a.updateHealthSnapshot(),
 	})
+}
+
+// handleOverview 控制中心首页的「后台信息」：只读统计，不需要登录管理后台。
+// 直接读的是管理后台同一个库（WAL 只读 COUNT，不写），读不到就留空由前端显示「未上报」。
+func (a *app) handleOverview(w http.ResponseWriter, r *http.Request) {
+	user := a.cfg.Admin.Username
+	if user == "" {
+		user = "admin"
+	}
+	out := map[string]any{
+		"admin":      "/admin/",
+		"admin_user": user,
+		"host":       r.Host,
+	}
+	a.adminMu.RLock()
+	db := a.adminDB
+	a.adminMu.RUnlock()
+	if db == nil {
+		out["ready"] = false
+		writeJSON(w, out)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	var players, items, mails, audits int64
+	if err := db.SQL.QueryRowContext(ctx, `SELECT COUNT(*) FROM profile`).Scan(&players); err != nil {
+		out["ready"] = false
+		writeJSON(w, out)
+		return
+	}
+	_ = db.SQL.QueryRowContext(ctx, `SELECT COUNT(*) FROM item`).Scan(&items)
+	_ = db.SQL.QueryRowContext(ctx, `SELECT COUNT(*) FROM mail`).Scan(&mails)
+	_ = db.SQL.QueryRowContext(ctx, `SELECT COUNT(*) FROM audit_log`).Scan(&audits)
+	tunables, _ := db.TunableList(ctx)
+	out["ready"] = true
+	out["players"] = players
+	out["items"] = items
+	out["mails"] = mails
+	out["audits"] = audits
+	out["tunables"] = len(tunables)
+	out["db"] = "up"
+	writeJSON(w, out)
 }
 
 // handleHosts 面板 hosts 指向开关：GET 返回当前指向，POST ?mode=local|official 切换。
