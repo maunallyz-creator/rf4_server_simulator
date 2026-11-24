@@ -168,10 +168,12 @@ func TestAdminAPI(t *testing.T) {
 		t.Fatalf("内嵌前端应 200, 实得 %d", code)
 	}
 
-	// 未认证拒绝
-	code, _ = call("GET", "/api/dashboard", "", "")
-	if code != 401 {
-		t.Fatalf("未认证应 401, 实得 %d", code)
+	// 只读页面匿名可看，写操作仍然要令牌
+	if code, _ = call("GET", "/api/dashboard", "", ""); code != 200 {
+		t.Fatalf("匿名读仪表盘应 200, 实得 %d", code)
+	}
+	if code, _ = call("POST", "/api/tunables", "", `{"key":"x","value":"1"}`); code != 401 {
+		t.Fatalf("未认证写入应 401, 实得 %d", code)
 	}
 
 	// 仪表盘

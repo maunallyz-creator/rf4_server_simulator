@@ -23,8 +23,8 @@ func TestReleaseNotesReadsPackageFile(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	srv.mux.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/release-notes", nil))
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("未认证请求状态 = %d, 期望 401", rec.Code)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("匿名读取发布说明状态 = %d, 期望 200", rec.Code)
 	}
 
 	rec = httptest.NewRecorder()

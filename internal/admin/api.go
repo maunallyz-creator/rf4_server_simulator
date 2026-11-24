@@ -73,8 +73,8 @@ func NewServer(cfg config.Admin, db *store.DB, log logger, webFS fs.FS) *Server 
 		return s.withAuth(h)
 	}
 	mux.HandleFunc("GET /api/me", auth(s.handleMe))
-	mux.HandleFunc("GET /api/dashboard", auth(s.handleDashboard))
-	mux.HandleFunc("GET /api/tunables", auth(s.handleTunableList))
+	mux.HandleFunc("GET /api/dashboard", s.handleDashboard)  // 匿名只读：不登录也能看
+	mux.HandleFunc("GET /api/tunables", s.handleTunableList) // 匿名只读：不登录也能看
 	mux.HandleFunc("POST /api/tunables", auth(s.handleTunableSet))
 	mux.HandleFunc("POST /api/skill_gain_mode", auth(s.handleSkillGainModeSet))
 	mux.HandleFunc("POST /api/fish_tv_test", auth(s.handleFishTVTest))
@@ -93,38 +93,38 @@ func NewServer(cfg config.Admin, db *store.DB, log logger, webFS fs.FS) *Server 
 	mux.HandleFunc("POST /api/players/skills/points", auth(s.handlePlayerSkillPoints))
 	mux.HandleFunc("POST /api/players/kick", auth(s.handleKick))
 	mux.HandleFunc("POST /api/players/ban", auth(s.handleBan))
-	mux.HandleFunc("GET /api/catalog/items", auth(s.handleCatalogItems))
-	mux.HandleFunc("GET /api/catalog/groups", auth(s.handleCatalogGroups))
-	mux.HandleFunc("GET /api/stores", auth(s.handleStores))
-	mux.HandleFunc("GET /api/stores/items", auth(s.handleStoreItems))
+	mux.HandleFunc("GET /api/catalog/items", s.handleCatalogItems)   // 匿名只读：不登录也能看
+	mux.HandleFunc("GET /api/catalog/groups", s.handleCatalogGroups) // 匿名只读：不登录也能看
+	mux.HandleFunc("GET /api/stores", s.handleStores)                // 匿名只读：不登录也能看
+	mux.HandleFunc("GET /api/stores/items", s.handleStoreItems)      // 匿名只读：不登录也能看
 	mux.HandleFunc("POST /api/stores/items/update", auth(s.handleStoreItemUpdate))
 	mux.HandleFunc("POST /api/stores/items/reset", auth(s.handleStoreItemReset))
-	mux.HandleFunc("GET /api/fish/areas", auth(s.handleFishAreas))
-	mux.HandleFunc("GET /api/fish/config", auth(s.handleFishConfig))
+	mux.HandleFunc("GET /api/fish/areas", s.handleFishAreas)   // 匿名只读：不登录也能看
+	mux.HandleFunc("GET /api/fish/config", s.handleFishConfig) // 匿名只读：不登录也能看
 	mux.HandleFunc("POST /api/fish/config", auth(s.handleFishConfigSave))
 	mux.HandleFunc("POST /api/fish/config/reset", auth(s.handleFishConfigReset))
-	mux.HandleFunc("GET /api/fish/pool", auth(s.handleFishPool))
-	mux.HandleFunc("GET /api/fish/spawn_mode", auth(s.handleSpawnModeGet))
+	mux.HandleFunc("GET /api/fish/pool", s.handleFishPool)           // 匿名只读：不登录也能看
+	mux.HandleFunc("GET /api/fish/spawn_mode", s.handleSpawnModeGet) // 匿名只读：不登录也能看
 	mux.HandleFunc("POST /api/fish/spawn_mode", auth(s.handleSpawnModeSet))
-	mux.HandleFunc("GET /api/fish/bite_mode", auth(s.handleBiteModeGet))
+	mux.HandleFunc("GET /api/fish/bite_mode", s.handleBiteModeGet) // 匿名只读：不登录也能看
 	mux.HandleFunc("POST /api/fish/bite_mode", auth(s.handleBiteModeSet))
-	mux.HandleFunc("GET /api/hooks/profiles", auth(s.handleHookProfiles))
+	mux.HandleFunc("GET /api/hooks/profiles", s.handleHookProfiles) // 匿名只读：不登录也能看
 	mux.HandleFunc("POST /api/hooks/profiles", auth(s.handleHookProfileSave))
-	mux.HandleFunc("GET /api/bait/prefs", auth(s.handleBaitPrefs))
-	mux.HandleFunc("GET /api/bait/items", auth(s.handleBaitItems))
-	mux.HandleFunc("GET /api/bait/categories", auth(s.handleBaitCategories))
+	mux.HandleFunc("GET /api/bait/prefs", s.handleBaitPrefs)           // 匿名只读：不登录也能看
+	mux.HandleFunc("GET /api/bait/items", s.handleBaitItems)           // 匿名只读：不登录也能看
+	mux.HandleFunc("GET /api/bait/categories", s.handleBaitCategories) // 匿名只读：不登录也能看
 	mux.HandleFunc("PUT /api/bait/rules", auth(s.handleBaitRuleSave))
 	mux.HandleFunc("POST /api/bait/rules/reset", auth(s.handleBaitRuleReset))
-	mux.HandleFunc("GET /api/fish/sea-now", auth(s.handleFishSeaNow))
-	mux.HandleFunc("GET /api/fish/sea-zone-latest", auth(s.handleFishSeaZoneLatest))
-	mux.HandleFunc("GET /api/fish/sea-zones", auth(s.handleFishSeaZones))
-	mux.HandleFunc("GET /api/fish/zones", auth(s.handleFishZones))
+	mux.HandleFunc("GET /api/fish/sea-now", s.handleFishSeaNow)                // 匿名只读：不登录也能看
+	mux.HandleFunc("GET /api/fish/sea-zone-latest", s.handleFishSeaZoneLatest) // 匿名只读：不登录也能看
+	mux.HandleFunc("GET /api/fish/sea-zones", s.handleFishSeaZones)            // 匿名只读：不登录也能看
+	mux.HandleFunc("GET /api/fish/zones", s.handleFishZones)                   // 匿名只读：不登录也能看
 	mux.HandleFunc("POST /api/fish/zones", auth(s.handleFishZoneSave))
 	mux.HandleFunc("POST /api/fish/zones/delete", auth(s.handleFishZoneDelete))
 	mux.HandleFunc("POST /api/mail/send", auth(s.handleMailSend))
-	mux.HandleFunc("GET /api/audit", auth(s.handleAudit))
-	mux.HandleFunc("GET /api/about", auth(s.handleAbout))
-	mux.HandleFunc("GET /api/release-notes", auth(s.handleReleaseNotes))
+	mux.HandleFunc("GET /api/audit", s.handleAudit)                // 匿名只读：不登录也能看
+	mux.HandleFunc("GET /api/about", s.handleAbout)                // 匿名只读：不登录也能看
+	mux.HandleFunc("GET /api/release-notes", s.handleReleaseNotes) // 匿名只读：不登录也能看
 
 	// 纸地图贴图运行时加载（素材不入仓库，见 paper_maps.go）：
 	// 先于 SPA FileServer 注册，web/ 内已不再内嵌 maps 目录。
