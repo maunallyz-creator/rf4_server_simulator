@@ -451,7 +451,9 @@ export function segmented(options, value, onChange) {
   const render = (v) => {
     box.replaceChildren(...options.map(([val, label]) => h('button', {
       type: 'button', class: String(val) === String(v) ? 'on' : '', role: 'radio', 'aria-checked': String(String(val) === String(v)),
-      onclick: () => { render(val); onChange(val); },
+      // 分段按钮常被放进 <label class="row"> 里：label 会把点击转发给第一个可标注控件，
+      // 导致「点第二项又跳回第一项」。阻止默认行为与冒泡，避免被 label 再点一次。
+      onclick: (e) => { e.preventDefault(); e.stopPropagation(); render(val); onChange(val); },
     }, label)));
   };
   render(value);
