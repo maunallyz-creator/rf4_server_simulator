@@ -1,5 +1,5 @@
 // 发邮件：选人 → 写内容 → 加附件 → 发送。右边实时预览玩家看到的样子。
-import { h, api, apiList, post, toast, errText, pageHead, section, btn, empty, debounce, searchBox, icon, badge, setLeaveGuard, confirmDialog } from '../core.js';
+import { h, api, apiList, post, toast, errText, pageHead, work, ib, h2s, h3s, hint, note, kv, bullets, pill, btn, empty, debounce, searchBox, icon, badge, setLeaveGuard, confirmDialog } from '../core.js';
 import { itemIcon, pickItem } from '../widgets.js';
 
 const TEMPLATES = [
@@ -74,18 +74,35 @@ export default async function mail(params) {
     finally { send.disabled = false; }
   }, 'primary lg', { icon: 'mail' });
 
-  return h('div', { class: 'page' },
-    pageHead('发邮件', '给一个玩家发消息，可以附带物品。玩家在游戏的邮箱里领取。'),
-    h('div', { class: 'grid-2', style: { gridTemplateColumns: 'minmax(0,1.3fr) minmax(0,1fr)', alignItems: 'start' } },
-      h('div', {},
-        section({ title: '发给谁', body: toBox }),
-        section({
-          title: '写点什么',
-          actions: h('div', { class: 'row' }, h('span', { class: 'muted small', text: '模板' }), TEMPLATES.map(([label, title, body]) => btn(label, () => { text.value = title + '\n\n' + body; preview(); }, 'ghost sm'))),
-          body: text,
-        }),
-        section({ title: '附件', desc: '物品会和邮件一起送达，玩家领取后进背包。', actions: btn('添加物品', () => pickItem({ title: '添加附件', onPick: (x) => { if (!attach.some((a) => a.item_id === x.item_id)) attach.push({ ...x, qty: 1 }); drawAttach(); preview(); } }), 'sm', { icon: 'plus' }), body: attachBox })),
-      h('div', { style: { position: 'sticky', top: '20px' } },
-        section({ title: '预览', desc: '玩家收到的内容。', body: pv }),
-        h('div', { class: 'row', style: { justifyContent: 'flex-end' } }, send))));
+  const aside = [
+    ib('发出去之后', null, bullets([
+      '约 2 秒内送进玩家的邮箱。',
+      '玩家下次打开邮箱就能领取。',
+      '附件物品会进背包，邮件本身留在邮箱里。',
+      '发出后不能撤回，写之前先看一眼预览。',
+    ])),
+    ib('发件人记谁', null, kv([['发件人', 'admin'], ['写入审计', '是'], ['收件人', to ? to.name + '（UID ' + to.uid + '）' : '还没选']]),
+      hint('每一封都会写进「审计日志」。')),
+  ];
+  return [
+    pageHead('邮件', '给一个玩家发消息，可以附带物品。玩家在游戏的邮箱里领取。'),
+    work([
+      h2s('发给谁'),
+      hint('搜昵称或 UID，点一下选中。'),
+      toBox,
+      h3s('写点什么'),
+      h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', margin: '0 0 8px' } },
+        h('span', { class: 'hint', text: '模板' }),
+        ...TEMPLATES.map(([label, title, body]) => btn(label, () => { text.value = title + '\n\n' + body; preview(); }, 'ghost sm'))),
+      text,
+      h3s('附件'),
+      h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', margin: '0 0 8px' } },
+        hint('物品会和邮件一起送达，玩家领取后进背包。'), h('span', { style: { flex: '1 1 auto' } }),
+        btn('添加物品', () => pickItem({ title: '添加附件', onPick: (x) => { if (!attach.some((a) => a.item_id === x.item_id)) attach.push({ ...x, qty: 1 }); drawAttach(); preview(); } }), 'ghost sm')),
+      attachBox,
+      h3s('预览'),
+      pv,
+      h('div', { style: { display: 'flex', justifyContent: 'flex-end', margin: '14px 0 0' } }, send),
+    ], aside),
+  ];
 }

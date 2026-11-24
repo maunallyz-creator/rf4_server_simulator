@@ -1,5 +1,5 @@
 // 鱼钩：按型号微调咬口难易。真实物理数据只读。
-import { h, api, post, toast, errText, pageHead, badge, btn, empty, loading, searchBox, debounce, dialog, Form, fmt, callout } from '../core.js';
+import { h, api, post, toast, errText, pageHead, work, ib, h2s, hint, note, kv, bullets, pill, badge, btn, empty, loading, searchBox, debounce, dialog, Form, fmt, callout } from '../core.js';
 import { itemIcon } from '../widgets.js';
 
 const FAMILY = [['', '所有钩型'], ['classic', '普通钩'], ['carp', '鲤鱼钩'], ['treble', '三本钩'], ['jighead', '铅头钩'], ['offset', '曲柄钩'], ['marine', '海钓钩'], ['other', '其他']];
@@ -23,6 +23,10 @@ export default async function hooks() {
         for (const s of [...new Set(list.map((p) => p.size))].sort((a, b) => a - b)) sizeSel.append(h('option', { value: s, text: '#' + s }));
       }
       count.textContent = list.length < (d.total || 0) ? `找到 ${fmt(d.total)} 个，显示前 ${list.length} 个` : `${fmt(list.length)} 个型号`;
+      statDl.replaceChildren(
+        h('div', {}, h('dt', { text: '符合条件的' }), h('dd', { text: fmt(d.total || list.length) })),
+        h('div', {}, h('dt', { text: '这页显示' }), h('dd', { text: fmt(list.length) })),
+        h('div', {}, h('dt', { text: '改过的' }), h('dd', { text: fmt(list.filter((p) => !isDefault(p)).length) })));
       tbody.replaceChildren(...(list.length ? list.map((p) => h('tr', {},
         h('td', {}, h('div', { class: 'row', style: { flexWrap: 'nowrap' } }, itemIcon(p.item_id, 32), h('div', {}, h('b', { text: p.name || p.brand || p.item_id }), h('span', { class: 'sub mono', text: p.item_id })))),
         h('td', { text: familyName(p.family) }),
@@ -34,15 +38,30 @@ export default async function hooks() {
     } catch (e) { tbody.replaceChildren(h('tr', {}, h('td', { colspan: 7 }, empty('读取失败', errText(e))))); }
   }
   load();
-  return h('div', { class: 'page' },
-    pageHead('鱼钩', '不同型号的鱼钩，咬口和中钩后的稳不稳可以单独调整。不改变鱼钩本身的强度。'),
-    h('div', { class: 'card card-pad' },
-      h('div', { class: 'row', style: { marginBottom: '14px' } },
-        h('div', { class: 'grow', style: { maxWidth: '360px' } }, searchBox('搜索型号或品牌，如 simmons', debounce((v) => { Q = v; load(); }, 300), Q)),
-        famSel, sizeSel, h('span', { class: 'spacer' }), count),
-      h('div', { class: 'table-wrap', style: { maxHeight: 'calc(100vh - 250px)' } }, h('table', { class: 'table' },
+  const statDl = h('dl');
+  const aside = [
+    ib('这一页管什么', '不同型号的鱼钩，咬口和中钩后的稳不稳可以单独调整', bullets([
+      '不改鱼钩本身的强度、长度和适合鱼重。',
+      '咬口难易 ×1 是默认；大于 1 更容易中鱼。',
+      '中钩稳定 ×1 是默认；大于 1 搏鱼时更不容易脱钩。',
+      '只影响这个型号，同钩型的其他尺寸各管各的。',
+    ])),
+    ib('改过多少', null, statDl, hint('改完约 30 秒热加载，不用重启服务。')),
+  ];
+  return [
+    pageHead('钩子手感', '不同型号的鱼钩，咬口和中钩后稳不稳可以单独调。不改变鱼钩本身的强度。'),
+    work([
+      h2s('鱼钩型号'),
+      hint('按钩型、尺寸筛选；点「调整」可以单独改一个型号。'),
+      h('div', { style: { display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', margin: '0 0 12px' } },
+        h('div', { style: { flex: '1 1 200px', minWidth: '160px', maxWidth: '320px' } }, searchBox('搜索型号或品牌，如 simmons', debounce((v) => { Q = v; load(); }, 300), Q)),
+        famSel, sizeSel, h('span', { style: { flex: '1 1 auto' } }), count),
+      h('div', { class: 'tbl', style: { maxHeight: 'calc(100vh - 330px)', overflow: 'auto' } }, h('table', {},
         h('thead', {}, h('tr', {}, h('th', { text: '鱼钩' }), h('th', { text: '钩型' }), h('th', { class: 'num', text: '尺寸' }), h('th', { class: 'num', text: '强度' }),
-          h('th', { class: 'num', title: '钩子大小能装下多大的鱼嘴', text: '适合鱼重' }), h('th', { text: '调整' }), h('th', {}))), tbody))));
+          h('th', { class: 'num', title: '钩子大小能装下多大的鱼嘴', text: '适合鱼重' }), h('th', {}), h('th', { class: 'num', text: '调整' }))), tbody)),
+    ], aside),
+  ];
+
 }
 
 function edit(p, reload) {

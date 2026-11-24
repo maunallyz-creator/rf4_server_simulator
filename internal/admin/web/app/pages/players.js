@@ -1,100 +1,132 @@
-// 玩家：左边找人，右边看和改这个人的一切。
+// 玩家：顶上选人，下面按二级页签看和改这个人的一切。
 import {
-  h, api, apiList, post, icon, toast, errText, pageHead, section, callout, badge, empty, btn, loading, Form, savebar, setLeaveGuard,
-  tabs, searchBox, debounce, confirmDialog, dialog, fmt, timeText, relTime, navigate, segmented, hideSavebar, setPageCleanup, replaceHash,
+  h, api, apiList, post, icon, toast, errText, pageHead, pageTabs, work, ib, h2s, h3s, hint, note, kv, bullets, pill, callout, badge,
+  empty, btn, loading, Form, savebar, setLeaveGuard,
+  searchBox, debounce, confirmDialog, dialog, fmt, timeText, relTime, navigate, segmented, hideSavebar, setPageCleanup, replaceHash, render, setCrumbTail,
+  getToken, loginDialog,
 } from '../core.js';
 import { itemIcon } from '../widgets.js';
 
-const TABS = [['profile', '概况'], ['items', '背包'], ['keepnet', '护鱼网'], ['records', '图鉴补录'], ['skills', '技能'], ['mail', '邮箱']];
+const TABS = [['profile', '档案'], ['items', '背包与装备'], ['keepnet', '鱼护'], ['records', '鱼种记录'], ['skills', '技能'], ['mail', '邮箱']];
 const GRADE = ['未钓到', '钓到过', '达标', '星级', '蓝冠'];
 const cents = (v) => (Number(v || 0) / 100).toFixed(2).replace(/\.00$/, '');
 let QUERY = '';
 
-export default async function players(params) {
+export default async function players(params = []) {
   const [uidParam, tabParam] = params;
-  const listBox = h('div', { class: 'list' }, loading(4));
-  const detail = h('div', {});
-  const root = h('div', { class: 'page' },
-    pageHead('玩家', '查看和修改角色的等级、货币、背包、护鱼网、图鉴和技能。', btn('刷新', () => loadList(), 'sm', { icon: 'refresh' })),
-    h('div', { class: 'master-detail' },
-      h('div', { class: 'card master' },
-        h('div', { style: { padding: '12px' } }, searchBox('搜索昵称或 UID', debounce((v) => { QUERY = v; loadList(); }, 250), QUERY)),
-        listBox),
-      detail));
-  let list = [];
-  async function loadList() {
-    try {
-      list = await apiList('/api/players?q=' + encodeURIComponent(QUERY));
-      listBox.replaceChildren(...(list.length ? list.map((p) => h('div', {
-        class: 'list-item clickable' + (String(p.uid) === String(uidParam) ? ' on' : ''),
-        onclick: () => navigate('players', p.uid),
-      }, h('div', { class: 'avatar', text: (p.name || '?').slice(0, 1) }),
-      h('div', { class: 'grow' }, h('div', { class: 'title', text: p.name }), h('div', { class: 'sub', text: `UID ${p.uid} · ${p.level} 级` })),
-      p.banned ? badge('已封禁', 'bad') : p.online ? badge('在线', 'ok', true) : null)) : [empty(QUERY ? '没有找到' : '还没有玩家', QUERY ? '换个关键词试试。' : '玩家第一次登录游戏后会出现在这里。')]));
-      return list;
-    } catch (e) { listBox.replaceChildren(empty('读取失败', errText(e))); return []; }
+  if (!getToken()) {
+    // 玩家数据不对未登录访客下发；其余页面都能直接看。
+    return [
+      pageHead('玩家管理', '查看和修改角色的等级、货币、背包、鱼护、图鉴和技能。'),
+      work([
+        h2s('这一页需要登录'),
+        hint('玩家档案涉及账号数据，未登录时后台不下发。登录后本页会自动加载，其它页面不登录也能看。'),
+        h('div', { style: { marginTop: '14px' } }, btn('登录管理后台', () => loginDialog(), 'primary')),
+        h('p', { class: 'hint', style: { marginTop: '12px' }, html: '也可以在控制中心首页登录：登录状态在两个页面之间是共用的。' }),
+      ], ib('为什么单独拦', null, hint('改玩家数据要留审计、写角色库，所以只把这类接口放在登录后面。'))),
+    ];
   }
-  const loaded = await loadList();
-  const timer = setInterval(() => { if (!document.hidden) loadList(); }, 8000);
-  setPageCleanup(() => clearInterval(timer));
-  if (!uidParam) {
-    if (loaded.length) { setTimeout(() => navigate('players', loaded[0].uid), 0); }
-    detail.replaceChildren(h('div', { class: 'card' }, empty('选择一个玩家', '在左边的列表里点一个玩家。')));
-    return root;
-  }
-  detail.replaceChildren(h('div', { class: 'card card-pad' }, loading(5)));
-  try {
-    const p = await api('/api/players/detail?uid=' + encodeURIComponent(uidParam));
-    detail.replaceChildren(playerDetail(p, TABS.some(([k]) => k === tabParam) ? tabParam : 'profile'));
-  } catch (e) { detail.replaceChildren(h('div', { class: 'card' }, empty('读取玩家失败', errText(e)))); }
-  return root;
-}
+  const tab = TABS.some(([k]) => k === tabParam) ? tabParam : 'profile';
+  const tabLabel = (TABS.find(([k]) => k === tab) || [])[1];
 
-function playerDetail(p, tab) {
-  const reload = () => navigate('players', p.uid, current);
-  let current = tab;
-  let tabDirty = () => false;
-  const pane = h('div');
-  const show = async (t) => {
-    if (t === current && pane.childNodes.length) return false;
-    if (tabDirty()) {
-      const ok = await confirmDialog({ title: '有修改还没保存', desc: '切换标签会放弃这些修改。', confirm: '放弃并切换' });
-      if (!ok) return false;
-    }
-    current = t;
-    tabDirty = () => false;
-    replaceHash('#players/' + p.uid + '/' + t);
-    hideSavebar(); setLeaveGuard(null);
-    const builders = { profile, items, keepnet, records, skills, mail };
-    pane.replaceChildren(builders[t](p, reload, (fn) => { tabDirty = fn; }));
+  let list = [];
+  const loadList = async () => {
+    try { list = await apiList('/api/players?q=' + encodeURIComponent(QUERY)); }
+    catch (e) { list = []; toast(errText(e), 'bad'); }
+    return list;
   };
-  const head = h('div', { class: 'row', style: { alignItems: 'flex-start', marginBottom: '6px' } },
-    h('div', { class: 'avatar', style: { width: '44px', height: '44px', fontSize: '18px' }, text: (p.name || '?').slice(0, 1) }),
-    h('div', { class: 'grow' },
-      h('div', { class: 'row' }, h('h2', { style: { fontSize: '19px' }, text: p.name }), p.banned ? badge('已封禁', 'bad') : null),
-      h('div', { class: 'muted small', text: `UID ${p.uid} · ${p.level} 级 · 经验 ${fmt(p.xp)}` })),
-    h('div', { class: 'row' },
-      btn('发邮件', () => navigate('mail', p.uid), 'sm', { icon: 'mail' }),
-      btn('踢下线', async () => {
-        if (!(await confirmDialog({ title: `把「${p.name}」踢下线？`, desc: '玩家会被断开连接，可以马上重新登录。', confirm: '踢下线' }))) return;
-        try { await post('/api/players/kick', { uid: p.uid }); toast('已踢下线'); } catch (e) { toast(errText(e), 'bad'); }
-      }, 'sm'),
-      btn(p.banned ? '解除封禁' : '封禁', async () => {
-        const ban = !p.banned;
-        if (!(await confirmDialog({ title: ban ? `封禁「${p.name}」？` : `解除对「${p.name}」的封禁？`, desc: ban ? '封禁后这个玩家无法登录游戏。' : '解除后玩家可以正常登录。', confirm: ban ? '封禁' : '解除封禁', danger: ban }))) return;
-        try { await post('/api/players/ban', { uid: p.uid, banned: ban }); toast(ban ? '已封禁' : '已解除封禁'); reload(); } catch (e) { toast(errText(e), 'bad'); }
-      }, p.banned ? 'sm' : 'danger sm')));
-  const counts = { items: p.item_count, keepnet: p.keepnet_count, mail: p.mail_count };
-  const card = h('div', { class: 'card card-pad' }, head,
-    tabs(TABS.map(([k, l]) => [k, l, counts[k]]), tab, show), pane);
-  show(tab);
-  return card;
+  await loadList();
+  let uid = uidParam || (list[0] ? String(list[0].uid) : '');
+  if (!uidParam && uid) setTimeout(() => navigate('players', uid, tab), 0);
+
+  const whoRow = h('div', { class: 'whorow' });
+  const drawWho = () => {
+    const shown = list.slice(0, 16);
+    whoRow.replaceChildren(...[
+      h('em', { text: '正在看谁' }),
+      shown.length ? h('div', { class: 'seg' }, ...shown.map((p2) => h('button', {
+        type: 'button',
+        class: String(p2.uid) === String(uid) ? 'on' : '',
+        onclick: () => { if (String(p2.uid) !== String(uid)) navigate('players', p2.uid, tab); },
+      }, `${p2.name} · Lv.${p2.level}`, p2.banned ? ' · 已封禁' : '')))
+        : h('span', { class: 'hint', text: QUERY ? '没有找到这个玩家' : '还没有玩家登录过' }),
+      list.length > shown.length ? h('span', { class: 'hint', text: '共 ' + list.length + ' 人，用上面的搜索找' }) : null,
+    ].filter(Boolean));
+  };
+  drawWho();
+
+  const searchRow = h('div', { style: { margin: '0 0 12px' } },
+    searchBox('搜索昵称或 UID，回车确认', debounce((v) => { QUERY = v; loadList().then(() => { drawWho(); }); }, 260), QUERY));
+
+  const tabsEl = pageTabs(TABS, tab, (k) => navigate('players', uid, k));
+  setCrumbTail(tabLabel);
+
+  let p = null;
+  if (uid) { try { p = await api('/api/players/detail?uid=' + encodeURIComponent(uid)); } catch (e) { p = null; } }
+
+  if (!p) {
+    return [
+      pageHead('玩家管理', '查看和修改角色的等级、货币、背包、鱼护、图鉴和技能。'),
+      tabsEl,
+      work([searchRow, whoRow, h('div', { style: { marginTop: '18px' } }, callout(uid ? 'bad' : 'info', uid ? '读取这个玩家失败，可能已经不存在。' : '先在上面选一个玩家。'))], [
+        ib('说明', null, bullets(['只能改已经在游戏里登录过的角色。', '改完玩家在线时会立即看到变化，不用重登。'])),
+      ]),
+    ];
+  }
+
+  const reload = () => navigate('players', p.uid, tab);
+  setPageCleanup(() => {});
+  const meta = `UID ${p.uid} · Lv.${p.level} · 经验 ${fmt(p.xp)} · 物品 ${p.item_count || 0} · 鱼护 ${p.keepnet_count || 0} · 邮箱 ${p.mail_count || 0}`;
+  const actRow = h('div', { class: 'row', style: { gap: '8px', margin: '0 0 14px', padding: '0', borderBottom: '0', flexWrap: 'nowrap', justifyContent: 'flex-start' } },
+    btn('发邮件', () => navigate('mail', p.uid), 'sm', { icon: 'mail' }),
+    btn('踢下线', async () => {
+      if (!(await confirmDialog({ title: `把「${p.name}」踢下线？`, desc: '玩家会被断开连接，可以马上重新登录。', confirm: '踢下线' }))) return;
+      try { await post('/api/players/kick', { uid: p.uid }); toast('已踢下线'); } catch (e) { toast(errText(e), 'bad'); }
+    }, 'ghost sm'),
+    btn(p.banned ? '解除封禁' : '封禁', async () => {
+      const ban = !p.banned;
+      if (!(await confirmDialog({ title: ban ? `封禁「${p.name}」？` : `解除对「${p.name}」的封禁？`, desc: ban ? '封禁后这个玩家无法登录游戏。' : '解除后玩家可以正常登录。', confirm: ban ? '封禁' : '解除封禁', danger: ban }))) return;
+      try { await post('/api/players/ban', { uid: p.uid, banned: ban }); toast(ban ? '已封禁' : '已解除封禁'); render(); } catch (e) { toast(errText(e), 'bad'); }
+    }, p.banned ? 'ghost sm' : 'danger sm'));
+
+  const builders = { profile, items, keepnet, records, skills, mail };
+  const pane = builders[tab](p, reload, (fn) => setLeaveGuard(fn));
+
+  const hh = p.happy_hour || {};
+  const aside = [
+    ib('这个账号', p.banned ? '已封禁，无法登录' : (p.online ? '在线' : '离线'), kv([
+      ['UID', String(p.uid)],
+      ['昵称', p.name || '—'],
+      ['等级', 'Lv.' + p.level],
+      ['银币', cents(p.silver) + ' 银'],
+      ['金币', cents(p.gold) + ' 金'],
+      ['会员', p.membership === 1 ? '限时会员' : p.membership === 2 ? '永久会员' : '普通'],
+      ['最近登录', p.last_login ? relTime(p.last_login) : '—'],
+    ])),
+    ib('背包与鱼护', null, kv([
+      ['物品', String(p.item_count || 0) + ' 件'],
+      ['鱼护', String(p.keepnet_count || 0) + ' 条'],
+      ['邮箱', String(p.mail_count || 0) + ' 封'],
+    ]), hint(hh.enabled === false ? '欢乐时光已在「钓场与鱼口」里关闭。' : !hh.qualified ? '开通会员后可以享受欢乐时光加成。' : hh.unlimited ? '永久会员，欢乐时光一直有效。' : '欢乐时光有效，剩余约 ' + Math.ceil((hh.remaining_seconds || 0) / 60) + ' 分钟。')),
+    ib('相关操作', null, h('div', { class: 'pills' },
+      h('a', { class: 'pill', href: '#mail/' + p.uid, text: '给这个人发邮件' }),
+      h('a', { class: 'pill', href: '#audit', text: '看他改过什么' })),
+      hint('封禁、踢下线会写进审计日志。')),
+  ];
+  return [
+    pageHead('玩家管理', '查看和修改角色的等级、货币、背包、鱼护、图鉴和技能。'),
+    tabsEl,
+    work([searchRow, whoRow, h2s(`${p.name}（UID ${p.uid}）`), hint(meta), actRow, pane], aside),
+  ];
 }
 
 // ---------- 概况 ----------
 function profile(p, reload, setDirty) {
   const form = new Form();
+  // 保存条内联在表单底部（演示页就是 section 底部的「放弃修改 / 核对并保存」）。
+  const actions = h('div', { class: 'savebar-inline' });
   savebar(form, {
+    inline: actions,
     onSave: async (v) => {
       const body = { uid: p.uid, name: form.value('name'), level: +form.value('level'), xp: +form.value('xp'),
         silver: Math.round(+form.value('silver') * 100), gold: Math.round(+form.value('gold') * 100), bank: Math.round(+form.value('bank') * 100) };
@@ -123,20 +155,26 @@ function profile(p, reload, setDirty) {
   const hh = p.happy_hour || {};
   const hhText = hh.enabled === false ? '欢乐时光已在「玩法规则」里关闭。' : !hh.qualified ? '开通会员后可以享受欢乐时光加成。'
     : hh.unlimited ? '永久会员，欢乐时光一直有效。' : `欢乐时光有效，剩余约 ${Math.ceil((hh.remaining_seconds || 0) / 60)} 分钟。`;
-  return h('div', { class: 'stack', style: { paddingTop: '4px' } },
-    h('div', {},
-      h('h3', { class: 'small', style: { color: 'var(--muted)', margin: '4px 0 4px' }, text: '角色' }),
+  const memberRow = h('label', { class: 'row' }, h('span', { class: 'lab' },
+    h('b', { text: '会员' }), h('small', { text: '限时需填到期' })),
+    h('span', { class: 'ctrl' }, seg));
+  const expRow = h('label', { class: 'row', hidden: String(p.membership) !== '1' }, h('span', { class: 'lab' }, h('b', { text: '会员到期' })),
+    h('span', { class: 'ctrl' }, expInput));
+  const hhNote = h('p', { class: 'hint', style: { margin: '10px 0 0' }, text: hhText });
+  const resetExp = () => { expRow.hidden = memberField.input.value !== '1'; };
+  seg.addEventListener('click', () => setTimeout(resetExp, 0), true);
+  resetExp();
+  return h('div', {},
+    h('div', { class: 'rows' },
       form.row({ key: 'name', label: '昵称', kind: 'string', required: true }, p.name),
       form.row({ key: 'level', label: '等级', kind: 'int', min: 1, max: 58, unit: '级' }, p.level),
-      form.row({ key: 'xp', label: '累计经验', kind: 'int', min: 0, help: '等级和经验要对得上，否则游戏里经验条会显示异常。' }, p.xp)),
-    h('div', {},
-      h('h3', { class: 'small', style: { color: 'var(--muted)', margin: '8px 0 4px' }, text: '货币' }),
-      form.row({ key: 'silver', label: '银币', kind: 'float', min: 0, help: '按游戏里显示的数字填写，可以有两位小数。' }, cents(p.silver)),
-      form.row({ key: 'gold', label: '金币', kind: 'float', min: 0 }, cents(p.gold)),
-      form.row({ key: 'bank', label: '银行存款', kind: 'float', min: 0 }, cents(p.bank))),
-    h('div', {},
-      h('h3', { class: 'small', style: { color: 'var(--muted)', margin: '8px 0 10px' }, text: '会员' }),
-      h('div', { class: 'stack' }, h('div', { class: 'row' }, seg, expWrap), h('div', { class: 'muted small', text: hhText }))));
+      form.row({ key: 'xp', label: '累计经验', kind: 'int', min: 0, help: '等级和经验要对得上，否则经验条会显示异常。' }, p.xp),
+      form.row({ key: 'silver', label: '银币（分）', kind: 'float', min: 0, help: '按游戏里显示的数字填，可以带两位小数。' }, cents(p.silver)),
+      form.row({ key: 'gold', label: '金币（分）', kind: 'float', min: 0 }, cents(p.gold)),
+      form.row({ key: 'bank', label: '银行（分）', kind: 'float', min: 0 }, cents(p.bank)),
+      memberRow, expRow),
+    hhNote,
+    actions);
 }
 
 // ---------- 背包 ----------
@@ -158,7 +196,7 @@ function items(p, reload) {
   draw();
   return h('div', { class: 'stack' },
     searchBox('筛选物品名称或 ID', (v) => { q = v.toLowerCase(); draw(); }),
-    h('div', { class: 'table-wrap', style: { maxHeight: '62vh' } }, h('table', { class: 'table' },
+    h('div', { class: 'tbl', style: { maxHeight: '62vh', overflow: 'auto' } }, h('table', {},
       h('thead', {}, h('tr', {}, h('th', { text: '物品' }), h('th', { text: '位置' }), h('th', { class: 'num', text: '数量' }), h('th', { class: 'num', text: '耐久' }), h('th', {}))), body)));
 }
 
@@ -167,7 +205,7 @@ function keepnet(p, reload) {
   const rows = p.keepnet || [];
   return h('div', { class: 'stack' },
     h('div', { class: 'row' }, h('span', { class: 'grow muted small', text: `共 ${rows.length} 条鱼。删除后统计和鱼市会同步更新。` }), btn('放入一条鱼', () => addFish(p, reload), 'primary sm', { icon: 'plus' })),
-    rows.length ? h('div', { class: 'table-wrap', style: { maxHeight: '62vh' } }, h('table', { class: 'table' },
+    rows.length ? h('div', { class: 'tbl', style: { maxHeight: '62vh', overflow: 'auto' } }, h('table', {},
       h('thead', {}, h('tr', {}, ['鱼', '重量', '档位', '地点', '饵', '时间', ''].map((t, i) => h('th', { class: i === 1 ? 'num' : '', text: t })))),
       h('tbody', {}, rows.map((x) => h('tr', {},
         h('td', {}, h('b', { text: x.name_zh || x.species }), h('span', { class: 'sub mono', text: x.species })),
@@ -253,7 +291,7 @@ function records(p, reload, setDirty) {
     box.replaceChildren(h('div', { class: 'stack' },
       callout('info', '用于补齐图鉴。补录算一次钓获，但不给经验、货币，也不放进护鱼网。真实钓到的记录不会被覆盖。保存前会自动备份存档。建议在玩家下线时补录。'),
       h('div', { class: 'row' }, mapSel, h('div', { class: 'grow' }, searchBox('筛选鱼名', (v) => { q = v.toLowerCase(); rows(); })), saveBtn),
-      h('div', { class: 'table-wrap', style: { maxHeight: '58vh' } }, h('table', { class: 'table' },
+      h('div', { class: 'tbl', style: { maxHeight: '58vh', overflow: 'auto' } }, h('table', {},
         h('thead', {}, h('tr', {}, h('th', { text: '鱼' }), h('th', { text: '现在' }), h('th', { class: 'num', text: '最重' }), h('th', { text: '补录为' }), h('th', { text: '补录重量（克）' }))), tbody))));
   }
   load('');
@@ -297,7 +335,7 @@ function mail(p, reload) {
   const rows = p.mails || [];
   return h('div', { class: 'stack' },
     h('div', { class: 'row' }, h('span', { class: 'grow muted small', text: '玩家自己删不掉领不出附件的坏邮件，可以在这里删掉后重新发。' }), btn('给他发邮件', () => navigate('mail', p.uid), 'primary sm', { icon: 'mail' })),
-    rows.length ? h('div', { class: 'table-wrap', style: { maxHeight: '62vh' } }, h('table', { class: 'table' },
+    rows.length ? h('div', { class: 'tbl', style: { maxHeight: '62vh', overflow: 'auto' } }, h('table', {},
       h('thead', {}, h('tr', {}, h('th', { text: '内容' }), h('th', { text: '类型' }), h('th', { text: '状态' }), h('th', { text: '时间' }), h('th', {}))),
       h('tbody', {}, rows.map((m) => h('tr', {},
         h('td', { style: { whiteSpace: 'normal', maxWidth: '420px' }, text: m.text || '（只有附件）' }),

@@ -1,5 +1,5 @@
 // 玩法规则：决定钓鱼「玩起来是什么感觉」。数值微调在「数值调整」页。
-import { h, api, post, icon, toast, errText, pageHead, section, callout, badge, Form, savebar, setLeaveGuard, confirmDialog, render } from '../core.js';
+import { h, api, post, icon, toast, errText, pageHead, pageTabs, work, ib, pblock, h2s, h3s, hint, note, kv, bullets, pill, callout, badge, Form, savebar, setLeaveGuard, confirmDialog, render, replaceHash, setCrumbTail, navigate } from '../core.js';
 
 const STYLES = [
   ['realistic', '真实鱼汛', '鱼按习性、天气、位置和饵料决定咬不咬。要研究钓点、选对饵，更接近真实钓鱼。', '下面六项规则中，除欢乐时光外全部开启'],
@@ -33,7 +33,7 @@ const OTHER = [
   ['bite_pace_enabled', '饵效控速', '开启后来鱼快慢由饵与动作共同决定：底钓/浮钓看饵对不对口；路亚/海钓铁板还看收线动作对不对口——饵与动作都对口时 1.5~6 秒内来鱼，动作不对口像差饵一样长时间才有鱼。只控节奏，不改出什么鱼。', '0'],
 ];
 
-export default async function rules() {
+export default async function rules(params = []) {
   const [t, mode] = await Promise.all([api('/api/tunables'), api('/api/fish/bite_mode').catch(() => ({}))]);
   const val = (k, d) => (t[k] === undefined || t[k] === '' ? d : t[k]);
   const form = new Form();
@@ -48,78 +48,127 @@ export default async function rules() {
 
   // 玩法风格
   const cur = mode.mode || 'legacy';
-  const styleCards = h('div', { class: 'grid-2' }, STYLES.map(([m, title, desc, note]) => {
+  const styleCards = h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: '10px' } }, STYLES.map(([m, title, desc, note]) => {
     const on = cur === m;
     return h('button', {
-      type: 'button', class: 'card', style: { textAlign: 'left', padding: '18px 20px', cursor: on ? 'default' : 'pointer', borderColor: on ? 'var(--accent)' : '', background: on ? 'var(--accent-soft)' : '' },
+      type: 'button', class: 'stylecard' + (on ? ' on' : ''), style: { cursor: on ? 'default' : 'pointer' },
       onclick: async () => {
         if (on) return;
         const ok = await confirmDialog({ title: `切换到「${title}」？`, desc: `${note}。约 30 秒内生效。`, confirm: '切换' });
         if (!ok) return;
         try { await post('/api/fish/bite_mode', { mode: m }); toast(`已切换到「${title}」`); render(); } catch (e) { toast(errText(e), 'bad'); }
       },
-    }, h('div', { class: 'row', style: { justifyContent: 'space-between' } }, h('b', { style: { fontSize: '15px' }, text: title }), on ? badge('当前', 'accent') : null),
-    h('p', { class: 'text-2 small', style: { marginTop: '6px' }, text: desc }));
+    }, h('div', { class: 'row', style: { justifyContent: 'space-between', gap: '10px', borderBottom: '0', padding: '0' } }, h('b', { text: title }), on ? badge('当前', 'accent') : null),
+    h('p', { class: 'hint', style: { margin: '4px 0 0' }, text: desc }));
   }));
 
   // 出鱼方式
   const spawnMode = val('grade_ratio_enabled', '1') === '1' ? 'grade_ratio' : val('two_stage_hunt_enabled', '0') === '1' ? 'two_stage' : val('fish_hunt_enabled', '0') === '1' ? 'fish_hunt' : '';
-  const spawnCards = h('div', { class: 'grid-3' }, SPAWN.map(([m, title, desc]) => {
+  const spawnCards = h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: '10px' } }, SPAWN.map(([m, title, desc]) => {
     const on = spawnMode === m;
     return h('button', {
-      type: 'button', class: 'card', style: { textAlign: 'left', padding: '16px 18px', cursor: on ? 'default' : 'pointer', borderColor: on ? 'var(--accent)' : '', background: on ? 'var(--accent-soft)' : '' },
+      type: 'button', class: 'stylecard' + (on ? ' on' : ''), style: { cursor: on ? 'default' : 'pointer' },
       onclick: async () => {
         if (on) return;
         if (form.isDirty() && !(await confirmDialog({ title: '有修改还没保存', desc: '切换出鱼方式会刷新页面，没保存的修改会丢失。', confirm: '继续切换' }))) return;
         try { await post('/api/fish/spawn_mode', { mode: m }); toast(`已切换到「${title}」，约 30 秒内生效`); render(); } catch (e) { toast(errText(e), 'bad'); }
       },
-    }, h('div', { class: 'row', style: { justifyContent: 'space-between' } }, h('b', { text: title }), on ? badge('当前', 'accent') : null),
-    h('p', { class: 'muted small', style: { marginTop: '6px' }, text: desc }));
+    }, h('div', { class: 'row', style: { justifyContent: 'space-between', gap: '10px', borderBottom: '0', padding: '0' } }, h('b', { text: title }), on ? badge('当前', 'accent') : null),
+    h('p', { class: 'hint', style: { margin: '4px 0 0' }, text: desc }));
   }));
   const gradeEditors = (GRADE_SETS[spawnMode] || []).map((set) => gradeEditor(form, set, t));
 
-  return h('div', { class: 'page' },
-    pageHead('玩法规则', '决定钓鱼玩起来是什么感觉。具体数字（咬钩快慢、经验倍率等）在「数值调整」里改。'),
-    section({
-      title: '玩法风格', desc: '一键切换下面六项规则的组合。',
-      actions: cur === 'mixed' ? badge('自定义组合', 'warn') : null,
-      body: h('div', { class: 'stack' }, styleCards, cur === 'mixed' ? callout('info', '下面的规则被单独改过，不属于任何一种预设。选择上面任一风格会整体覆盖。') : null),
-    }),
-    section({ title: '规则', desc: '每一项都可以单独开关，约 30 秒内生效。', body: h('div', {}, RULE_SWITCHES.map(([k, l, d, def]) => form.row({ key: k, label: l, help: d, kind: 'bool', def }, val(k, def)))) }),
-    section({
-      title: '出鱼方式', desc: '决定钓到的鱼里，好鱼（奖杯、蓝冠）占多少。三选一，点卡片切换。',
-      body: h('div', { class: 'stack' }, spawnCards, ...gradeEditors,
-        spawnMode === 'fish_hunt' ? callout('info', '鱼猎四阶段按玩家打窝、聚鱼的进度自动推进，没有需要手动设置的比例。') : null,
-        !spawnMode ? callout('warn', '还没有选择出鱼方式，目前按旧版规则出鱼。') : null),
-    }),
-    section({ title: '其他', body: h('div', {},
-      OTHER.map(([k, l, d, def]) => form.row({ key: k, label: l, help: d, kind: 'bool', def }, val(k, def))),
-      form.row({ key: 'hook_spawn_match_strength', label: '鱼钩大小影响出鱼', help: '0 表示不影响；1 表示大钩更容易钓到大鱼、小钩更容易钓到小鱼；2 更明显。选「按比例出鱼」时不起作用。', kind: 'float', min: 0, max: 2, def: '0' }, val('hook_spawn_match_strength', '0'))) }));
-}
+  // 三个二级页签，和演示页「钓场与鱼口」的拆法一致
+  const TABS = [['switches', '玩法开关'], ['grade', '出鱼与奖杯'], ['other', '其他']];
+  let SUB = 'switches';
+  if (params[0] && TABS.some(([k]) => k === params[0])) SUB = params[0];
+  const tabsEl = pageTabs(TABS, SUB, (k) => { SUB = k; replaceHash('#rules/' + k); render(); });
+  setCrumbTail((TABS.find(([k]) => k === SUB) || [])[1] || '');
 
+  const DESC = {
+    switches: '决定钓鱼玩起来是什么感觉。上面两种是官方预设，下面六项可以单独改。',
+    grade: '决定钓到的鱼里，好鱼（奖杯、蓝冠）占多少。三选一，点卡片切换。',
+    other: '活着、精力和鱼钩大小这类杂项。',
+  };
+  let blocks = [];
+  if (SUB === 'switches') {
+    blocks = [
+      h2s('玩法开关'),
+      hint(DESC.switches),
+      h3s('玩法风格'),
+      styleCards,
+      hint(cur === 'mixed' ? '现在不是任何一种预设。改下面任何一项都会变成自定义组合。' : '现在就是「' + (STYLES.find(([m]) => m === cur) || [])[1] + '」。改下面任何一项都会变成自定义组合。'),
+      h3s('六项规则（各自独立）'),
+      ...RULE_SWITCHES.map(([k, l, d, def]) => form.row({ key: k, label: l, help: d, kind: 'bool', def }, val(k, def))),
+    ];
+  } else if (SUB === 'grade') {
+    blocks = [
+      pblock(1, '出鱼方式', '决定钓到的鱼里，好鱼占多少。三选一，点卡片切换。', spawnCards, { id: 'pg-spawn' }),
+      ...(GRADE_SETS[spawnMode] || []).map((set, i) => pblock(i + 2, set.title, '填相对数量，会自动换算成百分比。', gradeEditor(form, set, t), { id: 'pg-grade-' + i })),
+      spawnMode === 'fish_hunt' ? note('鱼猎四阶段没有要设置的比例。', '它按玩家打窝、聚鱼的进度自动推进。') : null,
+      !spawnMode ? note('还没有选择出鱼方式。', '目前按旧版规则出鱼。') : null,
+    ].filter(Boolean);
+  } else {
+    blocks = [
+      pblock(1, '其他', '活得久不久、精力怎么恢复、鱼钩大小怎么影响出鱼。', [
+        ...OTHER.map(([k, l, d, def]) => form.row({ key: k, label: l, help: d, kind: 'bool', def }, val(k, def))),
+        form.row({ key: 'hook_spawn_match_strength', label: '鱼钩大小影响出鱼', help: '0 表示不影响；1 表示大钩更容易钓到大鱼、小钩更容易钓到小鱼；2 更明显。选「按比例出鱼」时不起作用。', kind: 'float', min: 0, max: 2, def: '0' }, val('hook_spawn_match_strength', '0')),
+      ], { id: 'pg-other' }),
+      pblock(2, '出鱼档位与等待时间', '这两类在别的页签里。', bullets([
+        '四档比例换算、奖杯线：本页「出鱼与奖杯」。',
+        '咬钩等待、路亚等待：游戏参数 › 玩法与钓组。',
+        '水域出哪些鱼：钓场与鱼口。',
+      ]), { id: 'pg-links' }),
+    ];
+  }
+  const aside = [
+    ib('当前是什么组合', '两种预设之一，或自定义', kv([
+      ['预设', cur === 'mixed' ? '自定义组合' : (STYLES.find(([m]) => m === cur) || [])[1] || '—'],
+      ['开着的规则', String(RULE_SWITCHES.filter(([k, , , d]) => val(k, d) === '1').length) + ' / ' + RULE_SWITCHES.length],
+      ['出鱼方式', (SPAWN.find(([m]) => m === spawnMode) || [])[1] || '旧版规则'],
+    ]), hint('切预设会整体覆盖六项开关，单独改一项就变自定义。')),
+    ib('相关页面', null, h('div', { class: 'pills' },
+      h('a', { class: 'pill', href: '#bait', text: '每种鱼吃什么' }),
+      h('a', { class: 'pill', href: '#tuning/gameplay', text: '咬钩快慢在游戏参数' }),
+      h('a', { class: 'pill', href: '#waters', text: '水域出哪些鱼' }))),
+    ib('生效方式', null, hint('保存后约 30 秒热加载，不用重启服务，也不用玩家重登。')),
+  ];
+  return [
+    pageHead('钓场与鱼口', DESC[SUB] || DESC.switches),
+    tabsEl,
+    work(blocks, aside),
+  ];
+}
 // 四档比例编辑：输入相对权重，实时显示换算后的百分比
 function gradeEditor(form, set, t) {
-  const bar = h('div', { style: { display: 'flex', height: '10px', borderRadius: '6px', overflow: 'hidden', background: 'var(--surface-4)' } });
-  const legend = h('div', { class: 'row small', style: { gap: '16px' } });
+  const bar = h('div', { style: { display: 'flex', height: '10px', borderRadius: '6px', overflow: 'hidden', background: 'var(--line-soft)' } });
+  const legend = h('div', { class: 'row small', style: { gap: '16px', borderBottom: '0', padding: '0', flexWrap: 'wrap' } });
   const fields = GRADES.map(([g, label], i) => {
     const key = set.prefix + g;
     return { key, label, f: form.field({ key, label, kind: 'float', min: 0, max: 100 }, t[key] ?? String(set.defs[i])) };
   });
+  const nums = () => fields.map(({ key }) => Math.max(0, Number(form.value(key)) || 0));
   const update = () => {
-    const nums = fields.map(({ key }) => Math.max(0, Number(form.value(key)) || 0));
-    const sum = nums.reduce((a, b) => a + b, 0) || 1;
-    bar.replaceChildren(...nums.map((n, i) => h('div', { style: { width: (n / sum * 100) + '%', background: GRADES[i][2] } })));
-    legend.replaceChildren(...nums.map((n, i) => h('span', {}, h('span', { style: { display: 'inline-block', width: '8px', height: '8px', borderRadius: '2px', background: GRADES[i][2], marginRight: '6px' } }),
+    const list = nums();
+    const sum = list.reduce((a, b) => a + b, 0) || 1;
+    bar.replaceChildren(...list.map((n, i) => h('div', { style: { width: (n / sum * 100) + '%', background: GRADES[i][2] } })));
+    legend.replaceChildren(...list.map((n, i) => h('span', {}, h('span', { style: { display: 'inline-block', width: '8px', height: '8px', borderRadius: '2px', background: GRADES[i][2], marginRight: '6px' } }),
       GRADES[i][1] + ' ', h('b', { text: (n / sum * 100).toFixed(1) + '%' }))));
+    fields.forEach(({ f }, i) => {
+      if (f.out) f.out.textContent = String(Math.round(list[i] * 100) / 100);
+      if (f.pct) f.pct.textContent = '占比 ' + (list[i] / sum * 100).toFixed(1) + '%';
+    });
   };
   const inputs = h('div', { class: 'grid-4' }, fields.map(({ label, f }) => {
-    f.input = h('input', { class: 'input num', inputmode: 'decimal', value: f.original, oninput: () => { form.refresh(); update(); } });
+    const out = h('span', { class: 'grade-val' });
+    const pct = h('span', { class: 'grade-percent' });
+    const start = Math.max(0, Math.min(100, Number(f.original) || 0));
+    f.input = h('input', { type: 'range', class: 'grade-slider', min: '0', max: '100', step: '0.01', value: String(start), oninput: () => { form.refresh(); update(); } });
     f.errEl = h('div', { class: 'help', style: { color: '#f08a97' }, hidden: true });
-    f.row = h('div', { class: 'field' }, h('label', { text: label }), f.input, f.errEl);
+    f.out = out; f.pct = pct;
+    f.row = h('div', { class: 'field' }, h('label', { style: { display: 'flex', alignItems: 'baseline', gap: '8px' } }, h('span', { text: label }), out), f.input, pct, f.errEl);
     return f.row;
   }));
   update();
-  return h('div', { class: 'card', style: { padding: '16px 18px', background: 'var(--surface-2)' } },
-    h('div', { class: 'row', style: { justifyContent: 'space-between', marginBottom: '10px' } }, h('b', { text: set.title }), h('span', { class: 'muted small', text: '填相对数量，会自动换算成百分比' })),
-    inputs, h('div', { style: { margin: '14px 0 8px' } }, bar), legend);
+  return h('div', {}, inputs, h('div', { style: { margin: '16px 0 8px' } }, bar), legend);
 }

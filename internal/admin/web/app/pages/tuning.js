@@ -1,5 +1,5 @@
 // 数值调整：所有可调数字按主题分组。开关类玩法在「玩法规则」页。
-import { h, api, post, toast, errText, pageHead, section, callout, badge, btn, Form, savebar, setLeaveGuard, replaceHash, render, confirmDialog, segmented, empty, icon } from '../core.js';
+import { h, api, post, toast, errText, pageHead, pageTabs, work, ib, pblock, h2s, h3s, hint, note, kv, bullets, pill, section, callout, badge, btn, Form, savebar, setLeaveGuard, replaceHash, render, confirmDialog, segmented, empty, icon, setCrumbTail, navigate } from '../core.js';
 import { itemIcon, pickItem } from '../widgets.js';
 
 // [key, 标签, 说明, 默认值, 类型, 单位, 最小, 最大]
@@ -120,7 +120,16 @@ const G = {
     ],
   },
 };
-const CATS = [['bite', '咬钩'], ['bait', '饵料与对口'], ['fish', '鱼'], ['wear', '装备磨损'], ['reward', '经验与奖励'], ['chat', '聊天提示'], ['event', '限时活动']];
+// 与演示页一致的三个二级页签；每个页签下面按主题拼多个 .pblock
+const CATS = [['gameplay', '玩法与钓组'], ['reward', '收益与通知'], ['event', '限时活动']];
+const TAB_GROUPS = { gameplay: ['bite', 'bait', 'fish', 'wear'], reward: ['reward', 'chat'], event: ['event'] };
+const TAB_DESC = {
+  gameplay: '玩法手感、钩型咬口、电轮与磨损、负载与角色状态。改完最多 30 秒生效，不用重启服务。',
+  reward: '经验、熟练度与聊天提示。改完最多 30 秒生效；技能概率模式切换是独立保存的。',
+  event: '新年与周年活动。活动设置只在玩家重新登录时下发。',
+};
+// 旧地址兼容：#tuning/bite 之类的老链接落到对应页签
+const OLD_TAB = { bite: 'gameplay', bait: 'gameplay', fish: 'gameplay', wear: 'gameplay', chat: 'reward' };
 const SKILL_GAIN_KEYS = [
   ['skill_gain_pct_1', '浮子钓鱼', '手竿、博洛尼亚竿等浮钓熟练度。'],
   ['skill_gain_pct_2', '纺车钓鱼', '纺车竿与枪柄竿共用的路亚熟练度。'],
@@ -132,7 +141,7 @@ const SKILL_GAIN_KEYS = [
   ['skill_gain_pct_8', '制作拟饵', '路亚手工制作熟练度。'],
 ];
 const SKILL_GAIN_MODES = [['native', '原版概率'], ['fixed100', '百分百'], ['custom', '自定义']];
-let CAT = 'bite';
+let CAT = 'gameplay';
 
 function skillGainModeOf(t) {
   const saved = String(t.skill_gain_mode ?? '');
@@ -143,7 +152,7 @@ function skillGainModeOf(t) {
   return 'custom';
 }
 
-function skillGainSection(form, t, val) {
+function skillGainSection(form, t, val, no = 90) {
   const mode = skillGainModeOf(t);
   const pick = async (next) => {
     if (next === mode) return;
@@ -159,15 +168,17 @@ function skillGainSection(form, t, val) {
   }, label)));
   const fields = mode === 'custom' ? h('div', { class: 'stack', style: { marginTop: '14px' } }, SKILL_GAIN_KEYS.map(([key, label, help]) =>
     form.row({ key, label, help, kind: 'float', min: 0, max: 100, unit: '%', def: 0 }, val(key, 0)))) : null;
-  return section({
-    title: '技能升级概率', desc: '一键切换全部技能：原版概率、全部百分百，或逐项自定义。0=原版公式，100=必定增长。',
-    actions: buttons,
-    body: h('div', {}, h('p', { class: 'muted small', text: '百分百模式会让每次符合条件的钓获、挖饵或制作都获得熟练度；固定百分比模式不叠加欢乐时光对原版概率的修正。' }), fields),
-  });
+  return pblock(no, '技能升级概率', '一键切换全部技能：原版概率、全部百分百，或逐项自定义。0=原版公式，100=必定增长。',
+    [h('div', { class: 'span-2', style: { gridColumn: '1 / -1' } }, buttons,
+      h('p', { class: 'hint', style: { margin: '8px 0 0' }, text: '百分百模式会让每次符合条件的钓获、挖饵或制作都获得熟练度；固定百分比模式不叠加欢乐时光对原版概率的修正。' })),
+    ...(fields ? [...fields.childNodes] : [])], { id: 'pg-skill' });
 }
 
 export default async function tuning(params) {
-  if (params[0] && CATS.some(([k]) => k === params[0])) CAT = params[0];
+  if (params[0]) {
+    const want = OLD_TAB[params[0]] || params[0];
+    if (CATS.some(([k]) => k === want)) CAT = want;
+  }
   const t = await api('/api/tunables');
   const val = (k, d) => (t[k] === undefined || t[k] === '' ? String(d) : t[k]);
   const form = new Form();
@@ -181,14 +192,6 @@ export default async function tuning(params) {
   setLeaveGuard(() => form.isDirty());
   const spec = ([key, label, help, def, kind, unit, min, max]) => ({ key, label, help, def: kind === 'bool' ? String(def) : def, kind, unit, min, max });
   const rows = (list) => list.map((d) => form.row(spec(d), val(d[0], d[3])));
-  const sub = h('nav', { class: 'subnav' }, CATS.map(([k, l]) => h('button', {
-    type: 'button', class: k === CAT ? 'on' : '',
-    onclick: async () => {
-      if (k === CAT) return;
-      if (form.isDirty() && !(await confirmDialog({ title: '有修改还没保存', desc: '切换分类会放弃这些修改。', confirm: '放弃并切换' }))) return;
-      CAT = k; replaceHash('#tuning/' + k); render();
-    },
-  }, l)));
 
   // 饵效控速未开启时不渲染 pace_* 行：这些参数只在开关打开后才参与计算，
   // 关闭时全部走 legacy/中性通路。
@@ -197,22 +200,61 @@ export default async function tuning(params) {
   let body;
   if (CAT === 'event') body = eventView(form, t, val);
   else {
-    const g = G[CAT];
-    const advRows = (g.adv || []).filter(paceVisible);
-    body = h('div', {},
-      section({
-        title: g.title, desc: g.desc,
-        body: h('div', {},
-          rows(g.main.filter(paceVisible)),
-          CAT === 'bite' && !paceOn ? h('p', { class: 'muted small', text: '「饵效控速」未开启（开关在「玩法规则 → 其他」）：开启后这里才会出现好饵/差饵/路亚等待区间等设置项；未开启时这些参数不参与任何计算。' }) : null,
-          advRows.length ? h('details', { class: 'advanced' }, h('summary', {}, '进阶 ', h('small', { text: `（${advRows.length} 项，一般不用改）` })), h('div', {}, rows(advRows))) : null),
-      }),
-      (g.groups || []).map(([title, desc, list]) => section({ title, desc, body: h('div', {}, rows(list)) })),
-      CAT === 'reward' ? skillGainSection(form, t, val) : null);
+    // 一个页签 = 若干主题，每个主题一个 01/02/03… 的 .pblock，页面才不会只有一屏
+    const out = [];
+    let no = 0;
+    for (const key of TAB_GROUPS[CAT] || []) {
+      const g = G[key];
+      if (!g) continue;
+      const advRows = (g.adv || []).filter(paceVisible);
+      const mainKids = [
+        ...rows(g.main.filter(paceVisible)),
+        key === 'bite' && !paceOn
+          ? h('p', { class: 'hint', style: { gridColumn: '1 / -1', margin: '4px 0 0' }, text: '「饵效控速」未开启（开关在「玩法规则 → 其他」）：开启后这里才会出现好饵/差饵/路亚等待区间等设置项；未开启时这些参数不参与任何计算。' })
+          : null,
+        advRows.length
+          ? h('div', { class: 'advanced', style: { gridColumn: '1 / -1', marginTop: '6px' } },
+            h('p', { class: 'hint', style: { margin: '0 0 2px' } }, '进阶 ', h('small', { text: `（${advRows.length} 项，一般不用改）` })),
+            h('div', { class: 'two gapped' }, ...rows(advRows)))
+          : null,
+      ].filter(Boolean);
+      out.push(pblock(++no, g.title, g.desc, mainKids, { id: 'pg-' + key }));
+      for (const [title, desc, list] of (g.groups || [])) out.push(pblock(++no, title, desc, rows(list), { id: 'pg-' + key + '-' + (out.length + 1) }));
+    }
+    if (CAT === 'reward') out.push(skillGainSection(form, t, val, ++no));
+    body = out;
   }
-  return h('div', { class: 'page' },
-    pageHead('数值调整', '微调钓鱼手感、经验和奖励。每一项都标了默认值，改坏了可以对照改回来。'),
-    h('div', { class: 'subnav-layout' }, sub, body));
+  const blocks = Array.isArray(body) ? body : [body];
+  const tabsEl = pageTabs(CATS, CAT, async (k) => {
+    if (k === CAT) return;
+    if (form.isDirty() && !(await confirmDialog({ title: '有修改还没保存', desc: '切换分类会放弃这些修改。', confirm: '放弃并切换' }))) return;
+    CAT = k; replaceHash('#tuning/' + k); render();
+  });
+  setCrumbTail((CATS.find(([k]) => k === CAT) || [])[1] || '');
+  const anchors = blocks.filter((b) => b && b.classList && b.classList.contains('pblock')).map((b) => ({
+    id: b.id,
+    no: (b.querySelector('.pno') || {}).textContent || '',
+    title: b.querySelector('.ptitle > b') ? b.querySelector('.ptitle > b').textContent : '',
+    n: b.querySelectorAll('.row').length,
+  }));
+  const aside = [
+    ib('这一页的分组', '点名字滚到那一组，不切页',
+      h('div', { class: 'pills', style: { flexDirection: 'column', alignItems: 'stretch', gap: '6px' } },
+        ...anchors.map((a) => h('button', {
+          class: 'pill', type: 'button',
+          onclick: () => { const el = document.getElementById(a.id); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); },
+        }, h('b', { text: a.no }), h('span', {}, h('span', { text: a.title }), h('em', { style: { display: 'block', fontStyle: 'normal', fontSize: '12.4px', color: 'var(--muted)', marginTop: '2px' }, text: `${a.n} 项` }))))),
+      hint('只滚动主栏，不改地址栏，所以不会丢掉还没保存的草稿。', { margin: '10px 0 0' })),
+    ib('生效说明', null,
+      kv([['作用范围', '全服'], ['生效时间', '最多 30 秒'], ['已改动项', String(form.dirtyKeys().length)], ['参数总数', String(Object.keys(t).length)]]),
+      h3s('相关页面'),
+      h('div', { class: 'pills' }, h('a', { class: 'pill', href: '#hooks/fight', text: '搏鱼参数在钩子手感 ›' }))),
+  ];
+  return [
+    pageHead('游戏参数', TAB_DESC[CAT] || TAB_DESC.gameplay),
+    tabsEl,
+    work(blocks, aside),
+  ];
 }
 
 // ---------- 限时活动 ----------
@@ -261,13 +303,13 @@ function eventView(form, t, val) {
     h('div', {}, h('div', { class: 's-label', text: '活动结束时间' }), h('div', { class: 's-help', text: '新年和周年活动面板上的倒计时终点。按你电脑的时区显示。' })),
     h('div', { class: 's-control' }, picker, endField.input));
 
-  return h('div', {},
-    callout('info', '活动设置只在玩家重新登录时下发。改完之后，玩家需要完全退出游戏再登录才能看到变化。'),
-    h('div', { style: { height: '16px' } }),
-    section({ title: '当前活动', desc: '同一时间只能开一个活动。点击立即切换。', body: mode }),
-    section({ title: '活动分支', desc: '选择活动面板里出现哪些任务线。都不选表示不下发任何活动任务。', body: branchField.row }),
-    section({ title: '时间', body: endField.row }),
-    giftsSection(t, [...chosen], which !== 'off'));
+  return [
+    note('活动设置只在玩家重新登录时下发。', '改完之后，玩家需要完全退出游戏再登录才能看到变化。'),
+    pblock(1, '当前活动', '同一时间只能开一个活动。点击立即切换。', h('div', { class: 'span-2', style: { gridColumn: '1 / -1' } }, mode)),
+    pblock(2, '活动分支', '选择活动面板里出现哪些任务线。都不选表示不下发任何活动任务。', h('div', { class: 'span-2', style: { gridColumn: '1 / -1' } }, branchField.row), { id: 'pg-branch' }),
+    pblock(3, '时间', '新年和周年活动面板上的倒计时终点。按你电脑的时区显示。', endField.row, { id: 'pg-time' }),
+    giftsSection(t, [...chosen], which !== 'off'),
+  ];
 }
 
 // 阶段奖励：按分支、阶段配置额外奖励物品
@@ -326,5 +368,5 @@ function giftsSection(t, branches, active) {
   }
   draw();
   hydrate();
-  return section({ title: '阶段奖励', desc: '完成活动某个阶段时，额外发放的物品。', body: box });
+  return pblock(4, '阶段奖励', '完成活动某个阶段时，额外发放的物品。', box, { id: 'pg-gifts' });
 }

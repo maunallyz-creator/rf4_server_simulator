@@ -100,9 +100,13 @@ export async function api(path, opt = {}) {
   const text = await r.text();
   let data = {};
   try { data = text ? JSON.parse(text) : {}; } catch (e) { data = { raw: text }; }
-  if (!r.ok) {
-    if (r.status === 401) setToken('');
-    const err = new Error(data.error || ('请求失败（HTTP ' + r.status + '）'));
+  if (!r.status.toString().startsWith('2')) {
+    // 未登录时只读接口不该把令牌清掉；写操作给出可照做的提示，而不是「未认证」四个字。
+    const isWrite = String(opt.method || 'GET').toUpperCase() !== 'GET';
+    if (r.status === 401 && !isWrite) setToken('');
+    const msg = r.status === 401 && isWrite ? '这一步需要登录：点右上角「登录」后再保存'
+      : (data.error || ('请求失败（HTTP ' + r.status + '）'));
+    const err = new Error(msg);
     err.status = r.status;
     err.data = data;
     throw err;
@@ -119,13 +123,27 @@ export async function apiList(path, opt = {}) {
 
 // ---------- 格式化 ----------
 export const fmt = (n) => (n === null || n === undefined || n === '' ? '—' : Number(n).toLocaleString('zh-CN'));
-export function timeText(ts) {
+// 审计时间可能是 Unix 秒（Go 后端）也可能是 RFC3339 字符串（预览服务），统一成秒。
+export function tsNum(ts) {
+  if (ts === null || ts === undefined || ts === '') return 0;
+  if (typeof ts === 'number') return ts > 1e12 ? ts / 1000 : ts;
   const n = Number(ts);
+  if (Number.isFinite(n) && n > 0) return n > 1e12 ? n / 1000 : n;
+  const p = Date.parse(ts);
+  return Number.isNaN(p) ? 0 : p / 1000;
+}
+export function timeText(ts) {
+  const n = tsNum(ts);
   if (!n) return '—';
   return new Date(n * 1000).toLocaleString('zh-CN', { hour12: false });
 }
+export function clockText(ts) {
+  const n = tsNum(ts);
+  if (!n) return '--:--:--';
+  return new Date(n * 1000).toLocaleTimeString('zh-CN', { hour12: false });
+}
 export function relTime(ts) {
-  const t = Number(ts) * 1000;
+  const t = tsNum(ts) * 1000;
   if (!t) return '—';
   const d = (Date.now() - t) / 1000;
   if (d < 60) return '刚刚';
@@ -187,6 +205,44 @@ export function confirmDialog({ title, desc, confirm = '确定', danger = false 
     });
   });
 }
+// 登录弹窗：后台默认不拦人，只有玩家数据（和管理类写操作）要登录。
+// 登录成功后 setToken 会触发 onAuth → 入口重新渲染，当前 hash 不变。
+export function loginDialog({ desc, onDone } = {}) {
+  const user = h('input', { id: 'lu', value: 'admin', autocomplete: 'username' });
+  const pass = h('input', { id: 'lp', type: 'password', autocomplete: 'current-password' });
+  const err = h('p', { class: 'alert', hidden: true });
+  const body = h('div', {},
+    err,
+    h('label', { class: 'field' }, h('span', { text: '账号' }), user),
+    h('label', { class: 'field', style: { marginTop: '10px' } }, h('span', { text: '密码' }), pass),
+    h('p', { class: 'hint', html: '账号和密码在服务器目录的 <code>config.yaml</code> 里（<code>admin.username</code> / <code>admin.password</code>）。发布包默认是 <code>admin</code> / <code>admin123</code>。' }));
+  dialog({
+    title: '登录管理后台',
+    desc: desc || '不登录也能看各页现状；登录后才能改玩家数据、保存设置。',
+    body,
+    actions: [
+      { label: '取消', kind: 'ghost' },
+      {
+        label: '登录', kind: 'primary',
+        onClick: async () => {
+          err.hidden = true;
+          try {
+            const d = await post('/api/login', { username: user.value.trim(), password: pass.value });
+            setToken(d.token);
+            toast('已登录');
+            onDone && onDone();
+            return false;
+          } catch (ex) {
+            err.hidden = false;
+            err.textContent = ex.status === 401 || ex.status === 403 ? '账号或密码不对。' : errText(ex);
+            return true;
+          }
+        },
+      },
+    ],
+  });
+}
+
 export function drawer({ title, sub, body, foot, onClose, width } = {}) {
   const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey); onClose && onClose(); };
   const onKey = (e) => { if (e.key === 'Escape' && !document.querySelector('.overlay:not(.drawer-overlay)')) close(); };
@@ -202,10 +258,167 @@ export function drawer({ title, sub, body, foot, onClose, width } = {}) {
 }
 
 // ---------- 通用片段 ----------
-export function pageHead(title, desc, actions) {
-  return h('div', { class: 'page-head' },
-    h('div', {}, h('h1', { text: title }), desc ? h('p', { text: desc }) : null),
-    actions ? h('div', { class: 'actions' }, actions) : null);
+let heroStats = null;
+export function setHeroStats(s) { heroStats = s || null; }
+
+// 业务口径数字：页面拿到数据后覆盖 hero 右上那四个数（演示页是 商店数/本店商品/覆盖总数/目录物品）。
+export function setHeroNumbers(list) {
+  const box = document.querySelector('.hero-side');
+  if (!box || !Array.isArray(list) || !list.length) return;
+  box.replaceChildren(...list.map(([v, u], i) => h('div', { class: i === 0 ? 'k1' : '' }, h('b', { text: String(v) }), h('i', { text: u }))));
+}
+
+// 面包屑末级：页面切二级页签时把「/ 货架价格」补到 .top .crumb 上。
+export function setCrumbTail(text) {
+  const c = $('#crumb');
+  if (!c) return;
+  c.querySelectorAll('i.tail,b').forEach((n) => n.remove());
+  if (text) c.append(h('i', { class: 'tail', text: '/' }), h('b', { text }));
+}
+
+// 每条路由在演示页里的横幅取景位置（.hero 的内联 --hpos）。
+const HPOS = {
+  dashboard: '52% 62%', players: '46% 40%', shop: '62% 58%', stores: '62% 58%',
+  rules: '52% 62%', fish: '52% 62%', waters: '50% 58%', hooks: '60% 50%',
+  bait: '44% 56%', mail: '58% 64%', tuning: '58% 46%', params: '58% 46%',
+  changelog: '62% 88%', release: '62% 88%', about: '50% 58%', audit: '54% 44%',
+};
+
+// 页首 = 照片横幅 + 标题/说明 + 四个数字 + 一行口径。
+// 结构与演示页 v177 逐层一致：
+// .hero > .hero-in > (.hero-main > .eyebrow + h1#title + p.lede) + .hero-side + .factbar > .facts
+// 另加 .hero-fade（底部羽化，皮肤靠它把照片压进纸面）。
+export function pageHead(title, desc, a3, a4, a5) {
+  let opts = {};
+  if (a3 && a3.nodeType) opts = { actions: a3, facts: a4, nums: a5 };
+  else if (Array.isArray(a3)) opts = { facts: a3 };
+  else if (a3 && typeof a3 === 'object') opts = a3;
+  const port = location.port && location.port !== '80' ? location.port : '9500';
+  const s = heroStats || {};
+  const cells = Array.isArray(opts.nums) && opts.nums.length
+    ? opts.nums.map(([v, u]) => [String(v), u])
+    : [
+      [String(s.sessions != null ? s.sessions : 0), '在线玩家'],
+      [String(s.players != null ? s.players : 0), '档案'],
+      [String(s.tunables != null ? s.tunables : 0), '可调参数'],
+      [String(port), '后台端口'],
+    ];
+  const strip = Array.isArray(opts.facts) && opts.facts.length ? opts.facts : [
+    ['生效', '保存后 30 秒'],
+    ['作用范围', '全部水域'],
+    ['要重登', '不需要'],
+    ['上次保存', s.last_save ? relTime(s.last_save) : '—'],
+  ];
+  const route = currentRoute() || 'dashboard';
+  return h('div', { class: 'hero', style: { '--hpos': opts.hpos || HPOS[route] || '52% 62%' } },
+    h('div', { class: 'hero-in' },
+      h('div', { class: 'hero-main' },
+        h('span', { class: 'eyebrow', id: 'eyebrow', text: opts.eyebrow || '' }),
+        h('h1', { id: 'title', text: title }),
+        desc ? h('p', { class: 'lede', id: 'lede', text: desc }) : null,
+        opts.actions ? h('div', { class: 'hero-acts' }, opts.actions) : null),
+      h('div', { class: 'hero-side', 'aria-label': '服务器要点' },
+        ...cells.map(([v, u], i) => h('div', { class: i === 0 ? 'k1' : '' }, h('b', { text: v }), h('i', { text: u })))),
+      h('div', { class: 'factbar' },
+        h('dl', { class: 'facts' },
+          ...strip.map(([k, v]) => h('div', {}, h('dt', { text: k }), h('dd', { text: v })))))),
+    h('div', { class: 'hero-fade' }));
+}
+
+// 二级页签：演示页是 #tabs > nav.tabs > a[aria-current=page]。
+export function pageTabs(items, active, onSelect) {
+  if (!Array.isArray(items) || !items.length) return null;
+  const route = currentRoute() || 'dashboard';
+  const nav = h('nav', { class: 'tabs', 'aria-label': '二级分类' },
+    ...items.map(([key, label]) => h('a', {
+      href: '#' + route + '/' + key,
+      'aria-current': key === active ? 'page' : false,
+      onclick: (e) => {
+        e.preventDefault();
+        if (onSelect) onSelect(key);
+        nav.querySelectorAll('a').forEach((a) => {
+          if (a === e.currentTarget) a.setAttribute('aria-current', 'page');
+          else a.removeAttribute('aria-current');
+        });
+      },
+    }, label)));
+  return h('div', { id: 'tabs' }, nav);
+}
+
+// 页面主体：.work > section（+ aside）。没有右栏时加 .solo。
+export function work(body, aside) {
+  const box = h('div', { class: 'work' + (aside ? '' : ' solo'), id: 'work' }, h('section', {}, ...(Array.isArray(body) ? body : [body])));
+  if (aside) box.append(h('aside', {}, aside));
+  return box;
+}
+
+// 右栏信息块：.ib > h2.serif + p.sub + 内容。
+export function ib(title, sub, ...body) {
+  return h('div', { class: 'ib' },
+    title ? h('h2', { class: 'serif', text: title }) : null,
+    sub ? h('p', { class: 'sub', text: sub }) : null,
+    ...body);
+}
+
+// 参数分组块：.group.pblock > .pblock-head(编号/标题/状态) + .two.gapped 行
+export function pblock(index, title, desc, body, opts = {}) {
+  const no = String(index).padStart(2, '0');
+  return h('section', { class: 'group pblock', id: opts.id || 'pg-' + no },
+    h('div', { class: 'pblock-head' },
+      h('b', { class: 'pno', text: no }),
+      h('span', { class: 'ptitle' }, h('b', { text: title }), desc ? h('small', { text: desc }) : null),
+      h('span', { class: 'pill', text: opts.pill || '未改动' })),
+    h('div', { class: 'two gapped' }, body));
+}
+
+export const h2s = (t) => h('h2', { class: 'serif', text: t });
+export const h3s = (t) => h('h3', { text: t });
+export const hint = (t, style) => h('p', { class: 'hint', text: t, style });
+export function note(head, body, style) {
+  return h('div', { class: 'note', style }, h('b', { text: head + ' ' }), h('span', { text: body }));
+}
+export function kv(pairs) {
+  return h('dl', {}, ...pairs.filter(Boolean).map(([k, v]) => h('div', {}, h('dt', { text: k }), h('dd', {}, v))));
+}
+export function bullets(items, ordered = false) {
+  return h(ordered ? 'ol' : 'ul', { class: 'bullets' }, ...items.map((t) => h('li', {}, t)));
+}
+export function pill(text, kind = '') { return h('span', { class: 'pill ' + kind, text }); }
+export function brief(cells) {
+  return h('div', { class: 'brief' }, ...cells.map(([v, k]) => h('div', {}, h('b', { text: String(v) }), h('small', { text: k }))));
+}
+
+// 表格：head 每项可以是 '文字' 或 ['文字','num']；rows 是单元格数组（字符串或节点）。
+export function tbl(head, rows, opts = {}) {
+  const cls = (h0, i) => (Array.isArray(h0[i]) ? h0[i][1] : '');
+  return h('div', { class: 'tbl' + (opts.cls ? ' ' + opts.cls : '') },
+    h('table', {},
+      h('thead', {}, h('tr', {}, ...head.map((c, i) => h('th', { class: cls(head, i), text: Array.isArray(c) ? c[0] : c })))),
+      h('tbody', {}, ...rows.map((r) => h('tr', {}, ...r.map((c, i) => h('td', { class: cls(head, i) }, c)))))));
+}
+
+// 运行日志块：.logs > div > (span 时间)(b 来源)(span 内容)。
+export function logsBlock(lines) {
+  return h('div', { class: 'logs' }, ...lines.map((l) => h('div', {},
+    h('span', { text: (l.time || '') + '  ' }),
+    h('b', { text: (l.who || '') }),
+    h('span', { class: l.kind || '', text: '  ' + (l.text || '') }))));
+}
+
+// 「从这里开始」任务行。
+export function startGrid(items) {
+  return h('div', { class: 'startgrid' }, ...items.map((it, i) => {
+    const tag = it.href ? 'a' : 'button';
+    return h(tag, {
+      class: 'start' + (i === 0 || it.lead ? ' lead' : ''),
+      href: it.href || undefined,
+      type: it.href ? undefined : 'button',
+      onclick: it.onClick,
+    },
+    h('span', { class: 'si' }, it.icon ? icon(it.icon) : null),
+    h('span', { class: 'st' }, h('b', { text: it.title }), h('small', { text: it.sub })),
+    h('span', { class: 'go', text: '›' }));
+  }));
 }
 export function section({ title, desc, actions, body, foot, id, cls }) {
   return h('section', { class: 'section ' + (cls || ''), id },
@@ -230,7 +443,8 @@ export function btn(label, onClick, kind = '', extra = {}) {
 export function toggleEl({ checked, onChange, disabled, label, id }) {
   const input = h('input', { type: 'checkbox', id, disabled, onchange: (e) => onChange && onChange(e.target.checked) });
   input.checked = !!checked;
-  return h('label', { class: 'toggle' }, input, h('span', { class: 'track' }), label ? h('span', { text: label }) : null);
+  const sw = h('label', { class: 'sw' }, input);
+  return label ? h('span', { class: 'swrow' }, sw, h('span', { class: 'small muted', text: label })) : sw;
 }
 export function segmented(options, value, onChange) {
   const box = h('div', { class: 'seg', role: 'radiogroup' });
@@ -244,17 +458,11 @@ export function segmented(options, value, onChange) {
   return box;
 }
 export function tabs(items, active, onChange) {
-  const box = h('div', { class: 'tabs', role: 'tablist' });
-  const render = (a) => box.replaceChildren(...items.map(([key, label, count]) => h('button', {
-    type: 'button', role: 'tab', class: key === a ? 'on' : '', 'aria-selected': String(key === a),
-    onclick: async () => { const result = await onChange(key); if (result !== false) render(key); },
-  }, label, count !== undefined && count !== null ? badge(String(count)) : null)));
-  render(active);
-  return box;
+  return pageTabs(items, active, onChange);
 }
 export function searchBox(placeholder, onInput, value = '') {
-  const input = h('input', { class: 'input', placeholder, value, oninput: (e) => onInput(e.target.value) });
-  return h('div', { class: 'search' }, icon('search'), input);
+  const input = h('input', { type: 'search', placeholder, value, oninput: (e) => onInput(e.target.value) });
+  return h('div', { class: 'search' }, input);
 }
 export function debounce(fn, ms = 250) {
   let t;
@@ -281,7 +489,7 @@ export class Form {
     return readInput(f);
   }
   dirtyKeys() {
-    return [...this.fields.values()].filter((f) => f.input && String(readInput(f)) !== String(f.original)).map((f) => f.spec.key);
+    return [...this.fields.values()].filter((f) => f.input && !sameValue(f)).map((f) => f.spec.key);
   }
   isDirty() { return this.dirtyKeys().length > 0; }
   validate(keys) {
@@ -327,12 +535,10 @@ export class Form {
     }
     if (spec.def !== undefined && spec.def !== '') metaBits.push('默认 ' + (spec.kind === 'bool' ? (String(spec.def) === '1' || spec.def === true ? '开' : '关') : spec.def + (spec.unit && spec.kind !== 'bool' ? ' ' + spec.unit : '')));
     f.errEl = h('div', { class: 's-error', hidden: true });
-    f.row = h('div', { class: 'setting' + (opts.wide ? ' wide-control' : '') },
-      h('div', {},
-        h('div', { class: 's-label' }, h('label', { for: f.input.id, text: spec.label })),
-        spec.help ? h('div', { class: 's-help', text: spec.help }) : null,
-        metaBits.length ? h('div', { class: 's-meta', text: metaBits.join(' · ') }) : null),
-      h('div', { class: 's-control' }, control),
+    const subBits = [spec.help || '', ...metaBits].filter(Boolean).join(' · ');
+    f.row = h('label', { class: 'row' + (opts.wide ? ' wide' : '') },
+      h('span', { class: 'lab' }, h('b', { text: spec.label }), subBits ? h('small', { text: subBits }) : null),
+      h('span', { class: 'ctrl' }, control),
       f.errEl);
     return f.row;
   }
@@ -356,7 +562,7 @@ function buildControl(form, f) {
     const input = h('input', { type: 'checkbox', id, onchange: onInput });
     input.checked = f.original === '1';
     f.input = input;
-    return h('label', { class: 'toggle' }, input, h('span', { class: 'track' }), s.toggleLabel ? h('span', { class: 'small text-2', text: s.toggleLabel }) : null);
+    return h('label', { class: 'sw' }, input);
   }
   if (s.kind === 'select') {
     const input = h('select', { class: 'select', id, onchange: onInput }, (s.options || []).map(([v, l]) => h('option', { value: v, text: l })));
@@ -391,6 +597,19 @@ function normalize(spec, v) {
   if (spec.kind === 'bool') return v === true || v === 1 || v === '1' || v === 'true' ? '1' : '0';
   return v === undefined || v === null ? '' : String(v);
 }
+// 数值字段用数值比较：数据库里的 59 与 59.0、59.00 是同一个值，不能算「改过」。
+function sameValue(f) {
+  const now = readInput(f);
+  const was = String(f.original);
+  const kind = f.spec.kind;
+  if (kind === 'int' || kind === 'float') {
+    const a = Number.parseFloat(now);
+    const b = Number.parseFloat(was);
+    if (Number.isFinite(a) && Number.isFinite(b)) return Math.abs(a - b) < 1e-9;
+    return now === '' && was === '';
+  }
+  return now === was;
+}
 function readInput(f) {
   if (!f.input) return f.original;
   if (f.spec.kind === 'bool') return f.input.checked ? '1' : '0';
@@ -421,10 +640,15 @@ function setError(f, msg) {
   if (f.errEl) { f.errEl.hidden = !msg; f.errEl.textContent = msg; }
 }
 
-// 底部保存条：一个页面同一时间只有一个
+// 保存条：默认是右下角浮层（一页一个）；传 inline 时渲染到指定容器里，
+// 用于「改完就在内容底部核对并保存」的页面（演示页是这种内联按钮）。
 let savebarEl = null;
-export function savebar(form, { onSave, label } = {}) {
-  if (!savebarEl) { savebarEl = h('div', { class: 'savebar', role: 'status' }); document.body.append(savebarEl); }
+export function savebar(form, { onSave, label, inline } = {}) {
+  let bar = inline || null;
+  if (!bar) {
+    if (!savebarEl) { savebarEl = h('div', { class: 'savebar', role: 'status' }); document.body.append(savebarEl); }
+    bar = savebarEl;
+  }
   const count = h('span');
   const saveBtn = btn('保存修改', async () => {
     const keys = form.dirtyKeys();
@@ -434,11 +658,13 @@ export function savebar(form, { onSave, label } = {}) {
     catch (e) { toast(errText(e), 'bad'); }
     finally { saveBtn.disabled = false; }
   }, 'primary sm');
-  savebarEl.replaceChildren(count, btn('放弃', () => form.reset(), 'ghost sm'), saveBtn);
+  bar.replaceChildren(count, btn('放弃', () => form.reset(), 'ghost sm'), saveBtn);
   const update = () => {
     const n = form.dirtyKeys().length;
-    count.replaceChildren((label || '') , h('b', { text: n }), ' 项修改尚未保存');
-    savebarEl.classList.toggle('on', n > 0);
+    if (inline && n === 0) count.replaceChildren(h('span', { class: 'hint', text: '没有改动' }));
+    else count.replaceChildren((label || ''), h('b', { text: n }), ' 项修改尚未保存');
+    saveBtn.disabled = n === 0;
+    bar.classList.toggle('on', n > 0);
   };
   form.onChange = update;
   update();
@@ -488,15 +714,32 @@ export async function render() {
   current = key;
   document.dispatchEvent(new CustomEvent('rf4:route', { detail: { name: key } }));
   const root = $('#view');
-  root.replaceChildren(h('div', { class: 'page' }, loading(4)));
+  // 不先把页面清空。上一次这里是 replaceChildren(loading)：旧页立刻消失、新页还要等模块加载，
+  // 于是 hero 照片整块闪一下。现在旧内容原地留着并轻微压暗，新内容算好之后一次换掉。
+  // 先不压暗：模块已经预取过时切换只要一两帧，压暗反而像闪。超过 130ms 才提示「在换」。
+  const busyTimer = setTimeout(() => { if (current === key) root.classList.add('is-busy'); }, 130);
   try {
     const node = await def.render(params);
-    if (current !== key) return;
-    root.replaceChildren(node);
-    window.scrollTo(0, 0);
+    clearTimeout(busyTimer);
+    if (current !== key) { root.classList.remove('is-busy'); return; }
+    const kids = Array.isArray(node) ? node.filter(Boolean) : [node];
+    // 演示页即使没有二级页签也留一个 #tabs 占位（hero 与 .work 之间的 18px 留白）。
+    if (!kids.some((n) => n && n.id === 'tabs')) kids.splice(1, 0, h('div', { id: 'tabs' }));
+    const swap = () => { root.replaceChildren(...kids); window.scrollTo(0, 0); };
+    const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (typeof document.startViewTransition === 'function' && !reduce) {
+      // 支持 View Transitions 的浏览器用一次 180ms 交叉淡入，避免硬切。
+      const done = () => { clearTimeout(busyTimer); root.classList.remove('is-busy'); };
+      document.startViewTransition(swap).finished.then(done, done);
+    } else {
+      swap();
+      root.classList.remove('is-busy');
+    }
   } catch (e) {
+    clearTimeout(busyTimer);
+    root.classList.remove('is-busy');
     if (e && e.status === 401) return;
-    root.replaceChildren(h('div', { class: 'page' }, callout('bad', ['页面加载失败：', errText(e)])));
+    root.replaceChildren(h('div', { class: 'work solo' }, h('section', {}, callout('bad', ['页面加载失败：', errText(e)]))));
   }
 }
 window.addEventListener('beforeunload', (e) => { if (guardFn && guardFn()) { e.preventDefault(); e.returnValue = ''; } });

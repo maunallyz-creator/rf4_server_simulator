@@ -1,54 +1,89 @@
 // 鱼饵偏好：每种鱼吃什么、不吃什么，可以按时间轮换。
-import { h, api, toast, errText, pageHead, callout, badge, btn, empty, loading, searchBox, debounce, drawer, dialog, confirmDialog, segmented, toggleEl, icon } from '../core.js';
+import { h, api, toast, errText, pageHead, work, ib, h2s, h3s, hint, note, kv, bullets, brief, pill, callout, btn, empty, loading, searchBox, debounce, drawer, dialog, confirmDialog, segmented, toggleEl, icon } from '../core.js';
 
 const DIET = [['lure', '拟饵'], ['worm', '蠕虫'], ['fish', '饵鱼'], ['boilie', '煮饵'], ['plant', '植物'], ['crustacean', '甲壳类']];
 const WILDCARD = [['各类饵', '所有饵料'], ['拟饵', '所有拟饵'], ['活饵类', '所有活饵'], ['饵鱼类', '所有饵鱼']];
 let Q = '', LOC = '', FILTER = 'all';
+const PAGE = 30;
+let SHOWN = PAGE;
 
 const put = (path, body) => api(path, { method: 'PUT', body: JSON.stringify(body) });
 
+// 一句话概括这条鱼现在的规则（演示页的「现在 吃 …」那一行）
+function nowLine(r) {
+  if (!r.has_rule) return '没有设置，按实际钓获数据判断';
+  const bits = [];
+  if ((r.allow || []).length) bits.push('吃 ' + r.allow.slice(0, 2).join('、') + (r.allow.length > 2 ? ` 等 ${r.allow.length} 种` : ''));
+  if ((r.bottom_only || []).length) bits.push('底钓另吃 ' + r.bottom_only.slice(0, 2).join('、'));
+  if ((r.deny || []).length) bits.push('不吃 ' + r.deny.slice(0, 2).join('、'));
+  if (r.rotation && r.rotation.enabled) bits.push('轮换 ' + r.rotation.total + ' 组');
+  if (r.condition && r.condition !== '无') bits.push(r.condition);
+  if (r.source === 'override' && r.enabled === false) bits.push('已停用');
+  const line = bits.slice(0, 3).join('；');
+  return line ? (line.length > 64 ? line.slice(0, 62) + '…' : line) : '已启用，但没有填具体的饵';
+}
+
 export default async function bait() {
   const areas = await api('/api/fish/areas').catch(() => []);
-  const tbody = h('tbody');
-  const count = h('span', { class: 'muted small' });
+  const listWrap = h('div', { class: 'fishlist' });
+  const count = h('span', { class: 'hint', style: { margin: '0 0 0 6px' } });
   const banner = h('div');
   let rows = [];
   async function load() {
-    tbody.replaceChildren(h('tr', {}, h('td', { colspan: 5 }, loading(5))));
+    listWrap.replaceChildren(h('div', { style: { padding: '18px' } }, loading(4)));
     try {
       const d = await api('/api/bait/prefs?limit=2000&q=' + encodeURIComponent(Q) + '&loc=' + encodeURIComponent(LOC));
       rows = d.rows || [];
-      banner.replaceChildren(d.rules_enabled === true ? '' : h('div', { style: { marginBottom: '16px' } }, callout('warn', h('span', {}, '「鱼会挑饵」规则现在是关闭的，这里的设置暂时不影响钓鱼。', h('a', { href: '#rules', text: ' 去打开 →' })))));
+      banner.replaceChildren(d.rules_enabled === true ? '' : note('「鱼会挑饵」规则现在是关闭的。', '这里的设置暂时不影响钓鱼，先去「玩法规则 → 其他」把它打开。'));
       draw();
-    } catch (e) { tbody.replaceChildren(h('tr', {}, h('td', { colspan: 5 }, empty('读取失败', errText(e))))); }
+    } catch (e) { listWrap.replaceChildren(empty('读取失败', errText(e))); }
   }
   function draw() {
     const list = rows.filter((r) => FILTER === 'all' || (FILTER === 'rule' && r.has_rule) || (FILTER === 'none' && !r.has_rule) || (FILTER === 'edited' && r.source === 'override'));
-    count.textContent = `${list.length} 种鱼`;
-    tbody.replaceChildren(...(list.length ? list.map((r) => h('tr', { style: { cursor: 'pointer' }, onclick: () => editFish(r, load) },
-      h('td', {}, h('b', { text: r.name_zh }), h('span', { class: 'sub', text: (r.locs || []).slice(0, 3).join('、') + ((r.locs || []).length > 3 ? ' 等' : '') })),
-      h('td', { style: { whiteSpace: 'normal', maxWidth: '460px' } }, r.has_rule
-        ? h('div', { class: 'small' }, chipsInline(r.allow), (r.deny || []).length ? h('div', { class: 'muted', text: '不吃：' + r.deny.join('、') }) : null)
-        : h('span', { class: 'muted small', text: '没有设置，按实际钓获数据判断' })),
-      h('td', {}, r.diet ? (r.lure_ok ? badge('会', 'ok') : badge('不会')) : h('span', { class: 'muted', text: '—' })),
-      h('td', {}, layerBar(r.layer, 120)),
-      h('td', {}, r.source === 'override' ? (r.enabled ? badge('改过', 'warn') : badge('改过·已停用')) : h('span', { class: 'muted small', text: '默认' }),
-        r.rotation && r.rotation.enabled ? badge('轮换中', 'accent') : null))) : [h('tr', {}, h('td', { colspan: 5 }, empty('没有符合条件的鱼')))]));
+    const page = list.slice(0, SHOWN);
+    count.textContent = list.length > page.length ? `${list.length} 种鱼 · 先显示 ${page.length}` : `${list.length} 种鱼`;
+    const more = list.length > page.length
+      ? h('div', { style: { display: 'flex', justifyContent: 'center', padding: '14px 0 4px' } },
+        btn(`再显示 ${Math.min(PAGE, list.length - page.length)} 种（还有 ${list.length - page.length} 种）`, () => { SHOWN += PAGE; draw(); }, 'ghost'))
+      : null;
+    listWrap.replaceChildren(...(page.length ? page.map((r) => {
+      const locs = (r.locs || []).slice(0, 2).join(' · ');
+      return h('section', { class: 'fishcard' },
+        h('div', { class: 'fishcard-head' },
+          h('span', { class: 'fi' }, h('b', { class: 'fname', text: r.name_zh }), locs ? h('span', { class: 'fkey', text: locs }) : null),
+          h('span', { class: 'now' }, h('em', { text: '现在' }), h('span', { text: nowLine(r) })),
+          h('button', { type: 'button', class: 'edit', text: '展开修改', onclick: () => editFish(r, load) })));
+    }) : [empty('没有符合条件的鱼', '换个筛选，或者把搜索词清空。')]), more);
   }
   load();
-  const locSel = h('select', { class: 'select', style: { width: '180px' }, onchange: (e) => { LOC = e.target.value; load(); } },
+  const locSel = h('select', { class: 'select', style: { width: '112px', flex: '0 0 auto' }, onchange: (e) => { LOC = e.target.value; SHOWN = PAGE; load(); } },
     h('option', { value: '', text: '所有水域' }), (Array.isArray(areas) ? areas : []).map((a) => h('option', { value: a.loc, text: a.loc, selected: a.loc === LOC })));
-  return h('div', { class: 'page' },
-    pageHead('鱼饵偏好', '每种鱼爱吃什么、不吃什么。点一种鱼查看和修改。需要在「玩法规则」里打开「鱼会挑饵」才生效。'),
+  const aside = [
+    ib('三份清单分别管什么', '比「整条鱼一句话」更细的一层', bullets([
+      '爱吃这些：正常咬钩的饵。',
+      '只有底钓才吃：浮钓和路亚抛它不咬。',
+      '不吃这些：明确排除，其他条件满足也不咬。',
+      '分几组轮着用：把饵分成几组按时换，适合限制「一个点只能用一种饵」。',
+      '前置条件：写一句人能看懂的话，比如「夜间」「水温 12℃ 以上」。',
+      '不勾「启用」等于这套规则作废，按默认走。',
+    ])),
+    ib('改的是哪一层', '不是改鱼本身，是改后台的吃饵规则', bullets([
+      '只影响这种鱼咬不咬、咬哪个饵，不改鱼种、权重、出鱼档位。',
+      '保存写进本服规则，不改客户端文件，重启也不丢。',
+      '「恢复默认」只丢掉这条鱼的覆盖，回到出厂规则。',
+    ])),
+    ib('生效方式', null, hint('保存后约 30 秒热加载，不用重启服务，也不用玩家重登。')),
+  ];
+  const filterSel = h('select', { class: 'select', style: { width: '104px', flex: '0 0 auto' }, onchange: (e) => { FILTER = e.target.value; SHOWN = PAGE; draw(); } },
+    [['all', '全部鱼种'], ['rule', '已设置'], ['none', '没设置'], ['edited', '我改过的']].map(([v, l]) => h('option', { value: v, text: l, selected: v === FILTER })));
+  const body = [
     banner,
-    h('div', { class: 'card card-pad' },
-      h('div', { class: 'row', style: { marginBottom: '14px' } },
-        h('div', { class: 'grow', style: { maxWidth: '320px' } }, searchBox('搜索鱼名，如 狗鱼', debounce((v) => { Q = v; load(); }, 300), Q)),
-        locSel,
-        segmented([['all', '全部'], ['rule', '已设置'], ['none', '没设置'], ['edited', '我改过的']], FILTER, (v) => { FILTER = v; draw(); }),
-        h('span', { class: 'spacer' }), count),
-      h('div', { class: 'table-wrap', style: { maxHeight: 'calc(100vh - 260px)' } }, h('table', { class: 'table' },
-        h('thead', {}, h('tr', {}, h('th', { text: '鱼' }), h('th', { text: '爱吃' }), h('th', { text: '咬拟饵' }), h('th', { text: '活动水层' }), h('th', { text: '状态' }))), tbody))));
+    h('div', { class: 'row baitfilters', style: { gap: '8px', margin: '0 0 14px', flexWrap: 'nowrap' } },
+      h('div', { style: { flex: '1 1 100%', minWidth: '0' } }, searchBox('搜索鱼名或饵名', debounce((v) => { Q = v; SHOWN = PAGE; load(); }, 300), Q)),
+      locSel, filterSel, h('span', { class: 'spacer' }), count),
+    listWrap,
+  ];
+  return [pageHead('鱼饵偏好', '每种鱼爱吃什么、不吃什么。点「展开修改」逐条改，保存后约 30 秒生效。'), work(body, aside)];
 }
 
 function chipsInline(list) {
@@ -74,12 +109,12 @@ function editFish(r, reload) {
   const snapshot = () => JSON.stringify(st);
   const initial = snapshot();
   const body = h('div');
-  const chipList = (arr) => h('div', { class: 'row', style: { gap: '6px' } }, arr.length ? arr.map((v, i) => h('span', { class: 'badge', style: { paddingRight: '4px' } }, v,
-    h('button', { type: 'button', 'aria-label': '移除 ' + v, style: { border: 0, background: 'none', color: 'var(--muted)', cursor: 'pointer', padding: '0 2px', display: 'grid' }, onclick: () => { arr.splice(i, 1); draw(); } }, icon('x', 12))))
+  const chipList = (arr) => h('div', { class: 'chips' }, arr.length ? arr.map((v, i) => h('span', { class: 'chip' }, h('span', { text: v }),
+    h('button', { type: 'button', 'aria-label': '移除 ' + v, onclick: () => { arr.splice(i, 1); draw(); } }, icon('x', 11))))
     : h('span', { class: 'muted small', text: '（空）' }));
   const bucket = (title, help, arr) => h('div', { style: { padding: '12px 0', borderTop: '1px solid var(--line)' } },
     h('div', { class: 'row', style: { justifyContent: 'space-between', marginBottom: '6px' } }, h('div', {}, h('b', { text: title }), help ? h('div', { class: 'muted small', text: help }) : null),
-      btn('添加', () => pickBait(title, (name) => { if (!arr.includes(name)) arr.push(name); draw(); }), 'sm', { icon: 'plus' })),
+      btn('添加', () => pickBait(title, (name) => { if (!arr.includes(name)) arr.push(name); draw(); }), 'ghost sm', { icon: 'plus' })),
     chipList(arr));
   function draw() {
     const rot = r.rotation || {};
@@ -93,7 +128,7 @@ function editFish(r, reload) {
       rot.enabled ? callout('info', `正在轮换：第 ${rot.active + 1}/${rot.total} 组（${(rot.active_baits || []).join('、')}）`) : null,
       ...st.groups.map((g, i) => h('div', { style: { padding: '10px 0', borderTop: '1px solid var(--line)' } },
         h('div', { class: 'row', style: { justifyContent: 'space-between', marginBottom: '6px' } }, h('b', { class: 'small', text: '第 ' + (i + 1) + ' 组' }),
-          h('div', { class: 'row' }, btn('添加', () => pickBait('第 ' + (i + 1) + ' 组', (name) => { if (!g.includes(name)) g.push(name); draw(); }), 'sm', { icon: 'plus' }),
+          h('div', { class: 'row' }, btn('添加', () => pickBait('第 ' + (i + 1) + ' 组', (name) => { if (!g.includes(name)) g.push(name); draw(); }), 'ghost sm', { icon: 'plus' }),
             btn('', () => { st.groups.splice(i, 1); draw(); }, 'ghost icon sm', { icon: 'trash', 'aria-label': '删除这一组' }))),
         chipList(g))),
       h('div', { class: 'row', style: { padding: '8px 0' } }, btn('新增一组', () => { if (st.groups.length >= 20) return toast('最多 20 组', 'bad'); st.groups.push([]); draw(); }, 'ghost sm', { icon: 'plus' })),
