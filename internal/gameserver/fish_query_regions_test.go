@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"rf4server/internal/store"
 )
 
 func TestFishQueryRegionRankingUsesCompetition(t *testing.T) {
@@ -18,8 +21,8 @@ func TestFishQueryRegionRankingUsesCompetition(t *testing.T) {
 	}
 	// The target is four times as abundant in the first cell, but competing
 	// species make its actual selection probability much worse there.
-	g.factors["target"] = []float64{4, 1, 0, 0}
-	g.factors["other"] = []float64{40, .1, 0, 0}
+	g.factors[distributionFactorCacheKey("target", 0.5)] = []float64{4, 1, 0, 0}
+	g.factors[distributionFactorCacheKey("other", 0.5)] = []float64{40, .1, 0, 0}
 	q := &fishQueryCapture{fish: "target", biteProbability: .6, acceptance: .5, gradeShare: .2,
 		regionalWeights: []fishQueryRegionalWeight{{"target", 1, .5}, {"other", 1, .8}}}
 	region, err := g.best(t.Context(), q)
@@ -192,6 +195,76 @@ func TestFishQueryRegionsPreserveSeaGridQuery(t *testing.T) {
 				t.Fatalf("sea plan replaced by inland region: %+v", plan)
 			}
 		}
+	}
+}
+
+func TestFishQuerySeaPointsUseGuideMarksAndEffectiveRule(t *testing.T) {
+	s, db := newStaticRigTestServer(t)
+	setBaitRuleSwitch(t, s, "1")
+	req := FishQueryRequest{UID: 1000001, Fish: "x_gladius", Map: "level_012_north_sea"}
+	if _, err := db.EnsureProfile(t.Context(), req.UID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetPlayerLocation(t.Context(), req.UID, req.Map, "loc12_15", 0); err != nil {
+		t.Fatal(err)
+	}
+	points := func() []fishQueryPoint {
+		t.Helper()
+		maps, err := s.fishQueryMaps(t.Context(), req, fishRollContext{})
+		if err != nil || len(maps) != 1 || len(maps[0].points) != 6 {
+			t.Fatalf("挪威海查鱼候选：%v，err=%v", maps, err)
+		}
+		if maps[0].scene != req.Map {
+			t.Errorf("模拟落点被玩家所在声呐区覆盖：scene=%s", maps[0].scene)
+		}
+		for _, ref := range maps[0].references {
+			if n, e := strconv.Atoi(ref.Coordinate); e == nil && !isSeaGuideSpot(n) {
+				t.Errorf("旧声呐网格号 %q 混入海图查鱼参考点", ref.Coordinate)
+			}
+		}
+		return maps[0].points
+	}
+	seen := map[int]bool{}
+	for _, p := range points()[:2] {
+		switch {
+		case p.zone == 95 && math.Abs(*p.x-3921) < 5 && math.Abs(*p.z-1182) < 5:
+			seen[75] = true
+		case p.zone == 252 && math.Abs(*p.x-3282) < 5 && math.Abs(*p.z+925) < 5:
+			seen[80] = true
+		}
+	}
+	if len(seen) != 2 {
+		t.Errorf("剑鱼应优先检查75米、80米图标位置，命中 %v", seen)
+	}
+	ov := store.FishBaitOverride{FishZh: "剑鱼", Condition: "80区", Enabled: true}
+	if err := db.SaveFishBaitOverride(t.Context(), ov, "test"); err != nil {
+		t.Fatal(err)
+	}
+	s.invalidateBaitOverrides()
+	if p := points()[0]; p.zone != 252 || math.Abs(*p.x-3282) > 5 || math.Abs(*p.z+925) > 5 {
+		t.Errorf("后台填写80区后，首选点应在80米标注中心，得到 %+v", p)
+	}
+	ov.Condition = "120区"
+	if err := db.SaveFishBaitOverride(t.Context(), ov, "test"); err != nil {
+		t.Fatal(err)
+	}
+	s.invalidateBaitOverrides()
+	for i, p := range points()[:3] {
+		if want := []int{170, 231, 273}[i]; p.zone != want {
+			t.Errorf("120米钓点 %d 的声呐区号=%d，期望 %d", i+1, p.zone, want)
+		}
+	}
+	ov.Condition = "声呐120区"
+	if err := db.SaveFishBaitOverride(t.Context(), ov, "test"); err != nil {
+		t.Fatal(err)
+	}
+	s.invalidateBaitOverrides()
+	if p := points()[0]; p.zone != 120 {
+		t.Errorf("明确填写声呐120区后，首选点的声呐区号为 %d", p.zone)
+	}
+	setWeatherTestTunable(t, s, "bait_exact_only", "1")
+	if p := points()[0]; p.zone != 95 && p.zone != 252 {
+		t.Errorf("精确食性表要求攻略75米或80米，优先检查的却是声呐区 %d", p.zone)
 	}
 }
 

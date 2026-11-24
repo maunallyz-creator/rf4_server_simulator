@@ -48,14 +48,17 @@ func TestHookProfileAPI(t *testing.T) {
 		return w
 	}
 
+	// 新后台：首页是外壳，鱼钩页是 app/pages/hooks.js 模块，必须调用钩子档案接口。
 	page := call(http.MethodGet, "/", "", "")
-	if page.Code != http.StatusOK ||
-		!strings.Contains(page.Body.String(), "钩子手感") ||
-		!strings.Contains(page.Body.String(), "view-hooks") {
-		t.Fatalf("后台钩子页面不可用: %d", page.Code)
+	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "app/main.js") {
+		t.Fatalf("后台首页不可用: %d", page.Code)
 	}
-	if got := call(http.MethodGet, "/api/hooks/profiles", "", "").Code; got != http.StatusUnauthorized {
-		t.Fatalf("未认证读取应 401，实得 %d", got)
+	hooksPage := call(http.MethodGet, "/app/pages/hooks.js", "", "")
+	if hooksPage.Code != http.StatusOK || !strings.Contains(hooksPage.Body.String(), "/api/hooks/profiles") {
+		t.Fatalf("后台鱼钩页面不可用: %d", hooksPage.Code)
+	}
+	if got := call(http.MethodGet, "/api/hooks/profiles", "", "").Code; got != http.StatusOK {
+		t.Fatalf("匿名读取鱼钩档案应 200，实得 %d", got)
 	}
 
 	login := call(http.MethodPost, "/api/login", "",

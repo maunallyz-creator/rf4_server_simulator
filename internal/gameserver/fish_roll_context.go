@@ -2,6 +2,7 @@ package gameserver
 
 import (
 	"hash/fnv"
+	"strconv"
 	"time"
 )
 
@@ -9,8 +10,10 @@ import (
 type fishRollContext struct {
 	x, z   float64
 	hasPos bool
-	spot   uint64
-	loc    string
+	// playerPosOnly 表示坐标来自人物，缺少本竿饵落点。
+	playerPosOnly bool
+	spot          uint64
+	loc           string
 	// uid 本次判鱼的玩家。窝料账本按 (uid, loc, 落点格子) 结算，
 	// 没有它就查不到窝。
 	uid        int64
@@ -39,13 +42,18 @@ type fishRollContext struct {
 	// 调用方据此跳过内置鱼池兜底——门拦下的杆就该空竿重排，不能从鱼池
 	// 捞出不属于本图的鱼。指针随值拷贝存活。
 	gateBlocked *bool
-	// emptyReason 记录把候选滤空的那一层（诊断日志用，不进玩家提示）。
-	// 指针随值拷贝存活，与 gateBlocked 同款用法。
-	emptyReason *string
+	// audit 把本次判鱼的位置与空因传回咬钩计时器。
+	audit *fishRollAudit
 	// pityEnv 是保底杂口标记：连续多轮空杆后由咬钩计时器置位，
 	// 只放宽环境类因素（分布散布归零→0.15、水层地板≥0.05），
 	// 食性硬门（G1 拟饵×非掠食鱼、明确禁饵）不放宽。
 	pityEnv bool
+}
+
+type fishRollAudit struct {
+	statLoc     string
+	runtime     *fishRollRuntime
+	emptyReason string
 }
 
 type fishRollRuntime struct {
@@ -53,15 +61,40 @@ type fishRollRuntime struct {
 	lureKnown bool
 	// levelChecked 保证一次判鱼只解析一次地点与海图区号。
 	levelChecked bool
-	// chartKnown 表示该地点有没有海图（目前只有挪威海）；zoneKnown 表示本次
-	// 落点能否定位到具体区号。两者共同决定海图条件算不算有证据。
+	// chartKnown 表示该地点有没有海图，zoneKnown 表示是否定位到声呐网格。
 	chartKnown bool
 	zone       int
 	zoneKnown  bool
+	// guideKnown 表示拿到了纸图定位证据；此时 guideSpot=0 表示落点已知但在标注范围外。
+	guideKnown bool
+	guideSpot  int
 	spotPref   map[string]float64
 	spotData   bool
 	// sonarSystemID 是海图声呐档案键（如 loc12_215）；内陆为空。
 	sonarSystemID string
+}
+
+func (r *fishRollRuntime) chartZoneLabel() string {
+	switch {
+	case r == nil:
+		return "未知"
+	case !r.chartKnown:
+		return "无海图"
+	case !r.zoneKnown:
+		return "未知"
+	default:
+		return strconv.Itoa(r.zone)
+	}
+}
+
+func (r *fishRollRuntime) guideSpotLabel() string {
+	if r == nil || !r.guideKnown {
+		return "未知"
+	}
+	if r.guideSpot == 0 {
+		return "标注范围外"
+	}
+	return strconv.Itoa(r.guideSpot)
 }
 
 func rollContext(contexts []fishRollContext) fishRollContext {

@@ -92,10 +92,16 @@ func (s *Server) fishQueryMaps(ctx context.Context, req FishQueryRequest, c fish
 			continue
 		}
 		loc := fishQueryMap{id: key, name: names[key], scene: key}
-		if current != nil && current.LevelKey == key && current.Scene != "" {
+		// 海图模拟点覆盖整张图；每个点用自己的世界坐标反查声呐区。
+		isSea := sonarChartLevel(key)
+		if !isSea && current != nil && current.LevelKey == key && current.Scene != "" {
 			loc.scene = current.Scene
 		}
-		refs, err := s.DB.SQL.QueryContext(ctx, `SELECT spot,SUM(catches) FROM spot_fish WHERE loc=? AND fish_key=? GROUP BY spot ORDER BY SUM(catches) DESC,spot LIMIT 6`, statLoc, req.Fish)
+		limit := 6
+		if isSea {
+			limit = 100 // 过滤旧声呐网格号后仍要保留足够的海图标深参考点。
+		}
+		refs, err := s.DB.SQL.QueryContext(ctx, `SELECT spot,SUM(catches) FROM spot_fish WHERE loc=? AND fish_key=? GROUP BY spot ORDER BY SUM(catches) DESC,spot LIMIT ?`, statLoc, req.Fish, limit)
 		if err != nil {
 			return nil, err
 		}
@@ -112,10 +118,22 @@ func (s *Server) fishQueryMaps(ctx context.Context, req FishQueryRequest, c fish
 			return nil, err
 		}
 		refs.Close()
+		if isSea {
+			kept := loc.references[:0]
+			for _, ref := range loc.references {
+				if n, e := strconv.Atoi(ref.Coordinate); e == nil && isSeaGuideSpot(n) {
+					kept = append(kept, ref)
+				}
+			}
+			loc.references = kept
+			if len(loc.references) > 6 {
+				loc.references = loc.references[:6]
+			}
+		}
 		if req.X != nil {
 			zone, _ := sonarZoneForPoint(key, *req.X, *req.Z)
 			loc.points = []fishQueryPoint{{x: req.X, z: req.Z, zone: zone, kind: "manual"}}
-		} else if sonarChartLevel(key) {
+		} else if isSea {
 			grids, err := loadSonarGrids()
 			if err != nil {
 				return nil, err
@@ -140,28 +158,55 @@ func (s *Server) fishQueryMaps(ctx context.Context, req FishQueryRequest, c fish
 					byZone[zone] = fishQueryPoint{x: &x, z: &z, zone: zone, kind: "sea_grid"}
 				}
 			}
-			priority := map[int]int{}
+			guidePriority := map[int]int{}
 			for i, r := range loc.references {
-				if n, e := strconv.Atoi(r.Coordinate); e == nil {
-					priority[n] = 100 - i
+				if n, e := strconv.Atoi(r.Coordinate); e == nil && isSeaGuideSpot(n) {
+					guidePriority[n] = 100 - i
 				}
 			}
 			nameMap, _ := s.cachedFishNames(ctx, c)
-			rule, _ := lookupFishBaitRule(nameMap[req.Fish])
-			for _, zone := range rule.chartZones {
-				priority[zone] += 1000
+			var rule fishBaitRule
+			if s.tunableF("bait_exact_only", 0) > 0 {
+				rule, _ = lookupStrictFishBaitRule(nameMap[req.Fish])
+			} else {
+				rule, _ = s.resolveBaitRule(ctx, nameMap[req.Fish])
+			}
+			for _, number := range rule.chartZones {
+				guidePriority[number] += 1000
+			}
+			sonarPriority := map[int]int{}
+			for _, zone := range rule.sonarZones {
+				sonarPriority[zone] = 1000
+			}
+			type candidate struct {
+				point fishQueryPoint
+				score int
+			}
+			var ranked []candidate
+			for _, mark := range seaGuideMarks {
+				score := guidePriority[mark.spot]
+				if score == 0 {
+					continue
+				}
+				zone, _ := sonarZoneForPoint(key, mark.x, mark.z)
+				if score < sonarPriority[zone] {
+					continue
+				}
+				// A sonar grid can contain several separate printed fishing spots.
+				delete(byZone, zone)
+				ranked = append(ranked, candidate{fishQueryPoint{x: &mark.x, z: &mark.z, zone: zone, kind: "sea_grid"}, score})
 			}
 			for _, p := range byZone {
-				loc.points = append(loc.points, p)
+				ranked = append(ranked, candidate{p, sonarPriority[p.zone]})
 			}
-			sort.Slice(loc.points, func(i, j int) bool {
-				if priority[loc.points[i].zone] != priority[loc.points[j].zone] {
-					return priority[loc.points[i].zone] > priority[loc.points[j].zone]
+			sort.SliceStable(ranked, func(i, j int) bool {
+				if ranked[i].score != ranked[j].score {
+					return ranked[i].score > ranked[j].score
 				}
-				return loc.points[i].zone < loc.points[j].zone
+				return ranked[i].point.zone < ranked[j].point.zone
 			})
-			if len(loc.points) > 6 {
-				loc.points = loc.points[:6]
+			for _, entry := range ranked[:min(6, len(ranked))] {
+				loc.points = append(loc.points, entry.point)
 			}
 		} else {
 			loc.regions, err = newFishQueryRegions(statLoc, fishQueryRegionScenes[key], c.now, s.tunableF("fish_distribution_enabled", 0) == 1, s.fishZonesFor(ctx, statLoc))

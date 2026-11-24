@@ -611,6 +611,13 @@ func (s *Server) rosterSonarSchools(ctx context.Context, systemID string, grid s
 		levelChecked: true, chartKnown: true, zone: zone, zoneKnown: zoneOK,
 		sonarSystemID: systemID,
 	}
+	// 回波属于请求的水域，只有饵落在这片水域时才使用该点的渔获观测。
+	if c.hasPos && !c.playerPosOnly {
+		if _, _, inside := sonarPlayerCell(grid, c.x, c.z); inside {
+			c.runtime.guideKnown = true
+			c.runtime.guideSpot = seaGuideSpotForPoint(c.x, c.z)
+		}
+	}
 	s.prepareFishRollRuntime(ctx, &c, statLoc)
 
 	roster, err := s.cachedLocRoster(ctx, c, statLoc)
@@ -739,8 +746,7 @@ func sonarChartLevel(levelKey string) bool {
 	return false
 }
 
-// sonarZoneNumber 取水域 systemID（loc12_215）里的数字段。攻略里的
-// "海图215号区域"和客户端的水域编号是同一个数字。
+// sonarZoneNumber 取水域 systemID（loc12_215）中的声呐网格编号。
 func sonarZoneNumber(systemID string) (int, bool) {
 	i := strings.LastIndexByte(systemID, '_')
 	if i < 0 || i+1 >= len(systemID) {
@@ -753,15 +759,7 @@ func sonarZoneNumber(systemID string) (int, bool) {
 	return zone, true
 }
 
-// sonarZoneFromLoc 客户端上报的 loc12_N 直接给出权威海图区号。
-func sonarZoneFromLoc(loc string) (int, bool) {
-	if !strings.HasPrefix(loc, "loc12_") {
-		return 0, false
-	}
-	return sonarZoneNumber(loc)
-}
-
-// sonarZoneForPoint 把抛竿落点换算成海图区号。矩形重叠时取面积最小的水域，
+// sonarZoneForPoint 把抛竿落点换算成声呐网格编号。矩形重叠时取面积最小的水域，
 // 结果只由静态资源决定，同一坐标重复查询稳定。落在海图之外返回 ok=false。
 func sonarZoneForPoint(levelKey string, x, z float64) (int, bool) {
 	if levelKey == "" {

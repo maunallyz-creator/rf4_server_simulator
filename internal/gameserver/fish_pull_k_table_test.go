@@ -7,7 +7,8 @@ import (
 )
 
 // 官服 14/14 抓包 A 级锚点（2026-09-18 真值表 9 样本 + 2026-11-10/11 新抓 12+8
-// 样本 + 2026-11-16/17 断电抢救包 53 样本，见 fish-pull-k-table spec v2 章节）。
+// 样本 + 2026-11-16/17 断电抢救包 53 样本 + 2026-11-10 旧路亚包流 3 补挖，
+// 见 fish-pull-k-table spec v2/v2.2 章节）。
 // 只落数值锚点，不含任何抓包原始数据（CONTRIBUTING 禁令不受影响）。
 // 恒 k 类鱼种锚点配对跨体重档（如 coalfish 702/3027g），钉死 Slope=0。
 var officialPullAnchors = []struct {
@@ -35,6 +36,7 @@ var officialPullAnchors = []struct {
 	{"perch", 100, 1.676, 3},
 	{"perch", 340, 5.832, 3},
 	{"perch", 259, 4.408, 3},
+	{"perch", 374, 6.4277, 3},
 	{"g_carp", 21742, 423.798, 2},
 	{"g_carp", 4880, 93.4397, 2},
 	{"g_carp", 5484, 105.073, 2},
@@ -87,6 +89,15 @@ var officialPullAnchors = []struct {
 	{"carp_ghost", 4513, 77.871, 2},
 	{"kw_tench", 987, 18.432, 2},
 	{"c_bleak", 24, 0.424, 3},
+	// —— v2.2：2026-11-10 旧路亚包流 3 补挖（鲑科首测；单样本 K0 按斜率先验
+	// 0.35 反推，见 spec v2.2）——
+	{"a_char", 415, 8.20065, 2},
+	{"gc_smelt", 772, 15.4862, 2},
+	// m_carp 的 4 个单样本锚点（v2 时原始值未留档，现自断电抢救包恢复）。
+	{"m_carp", 2312, 38.7099, 2},
+	{"m_carp", 3494, 59.5393, 2},
+	{"m_carp", 4756, 81.8166, 2},
+	{"m_carp", 5370, 92.5332, 2},
 }
 
 // TestFishPullMatchesOfficialAnchors 防回归：已实测鱼种的 f8 必须落在官服
@@ -112,7 +123,7 @@ func TestFishPullGroupFallback(t *testing.T) {
 		group   string
 		wantK   float64
 	}{
-		{"riv_rb_trout", "salmonid", 18.0},
+		{"riv_rb_trout", "salmonid", 20.11},  // v2.2：组值按实测成员 a_char/gc_smelt 的 K0 均值标定
 		{"lm_b_bass", "predator", 17.30},     // v2：组值锚 n.pike 实测
 		{"din_m_carp", "carp_mid", 16.50},    // v2：组值锚 carp
 		{"karasekarp", "still_carp", 15.05},  // v2：组值锚 crucian
@@ -153,9 +164,15 @@ func TestFishPullGroupFallback(t *testing.T) {
 	if got := srv.fishPullK0For("n_carp"); math.Abs(got-16.53) > 1e-9 {
 		t.Errorf("n_carp 应走实测表 K0=16.53，实得 %f（v2 前=组 16.7）", got)
 	}
-	// m_carp v2.1 口径（PR #516 审查修正）：4 样本仅产出拟合参数，无单样本
-	// f8 锚点可断言（样本原始值按 CONTRIBUTING 禁令不入库、断电后未留档）。
-	// 此处钉表参数防误改；拿到补抓样本后再升级为数值锚点。
+	// v2.2 升实测的鲑科两种：同样优先命中逐鱼种表。
+	if got := srv.fishPullK0For("a_char"); math.Abs(got-20.07) > 1e-9 {
+		t.Errorf("a_char 应走实测表 K0=20.07，实得 %f（v2.2 前=组 18.0）", got)
+	}
+	if got := srv.fishPullK0For("gc_smelt"); math.Abs(got-20.15) > 1e-9 {
+		t.Errorf("gc_smelt 应走实测表 K0=20.15，实得 %f（v2.2 前=组 18.0）", got)
+	}
+	// m_carp 的 4 个单样本 f8 锚点已入 officialPullAnchors（v2.2 自断电抢救包
+	// 恢复，重拟合仍是 {16.27, 0.59}）；此处钉表参数防误改。
 	if got := srv.fishPullParamFor("m_carp"); got != (fishPullParam{K0: 16.27, Slope: 0.59}) {
 		t.Errorf("m_carp 参数应为 {16.27, 0.59}，实得 %+v", got)
 	}
@@ -187,6 +204,10 @@ func TestFishPullLnSlopeTunable(t *testing.T) {
 	// 恒 k 类（Slope=0）不吃 tunable。
 	if got := srv.fishFightPullFor(&RolledFish{Species: "coalfish", WeightG: 2000}); math.Abs(got-2*21.58) > 1e-6 {
 		t.Fatalf("恒 k 的 coalfish 2kg 应恒为 2×21.58=43.16（Slope=0 不吃 tunable），实得 %f", got)
+	}
+	// merlang v2.2 改判恒 k（k=20.60=2.1×9.81，落恒 k 离散档）：同样不吃 tunable。
+	if got := srv.fishFightPullFor(&RolledFish{Species: "merlang", WeightG: 2000}); math.Abs(got-2*20.60) > 1e-6 {
+		t.Fatalf("恒 k 的 merlang 2kg 应恒为 2×20.60=41.20，实得 %f", got)
 	}
 	// tunable=1：未标定种斜率取 1，2kg fallback = 2×(K0+1·ln2)。
 	srv.tunCache = map[string]float64{"fish_pull_ln_slope": 1.0}

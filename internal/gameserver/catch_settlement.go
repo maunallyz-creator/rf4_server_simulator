@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"math/rand"
 	"strings"
 	"time"
 
@@ -244,7 +243,8 @@ func (s *Server) settleCatchOnceWithQualification(ctx context.Context, uid int64
 	// 存量库里的浮点累加尾差（如 99.99999999999996）量化到 0.1 显示格，
 	// 否则钳位后产生正残渣增量，客户端渲染「+0 = 100%」技能行。
 	oldSkill = store.QuantizeSkillPoints(oldSkill)
-	gain := math.Min(fishingProficiencyGainForRoll(oldSkill, happyHourProficiencyRoll(oldSkill, rand.Float64(), happy), rand.Float64()), math.Max(0, profCap-oldSkill))
+	// 后台填了固定百分比时按该百分比判定，不再叠加幸运时刻对原版概率的修正。
+	gain := math.Min(s.proficiencyGainForCatch(r.SkillID, oldSkill, happy), math.Max(0, profCap-oldSkill))
 	gain = store.QuantizeSkillPoints(gain) // 钳位残渣（如 3.6e-14）归零，增量保持 0.1/0.2 格
 	r.SkillGain = &gain
 	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(MAX(weight_g),0) FROM catch_log WHERE uid=? AND fish_key=?`, uid, f.Species).Scan(&r.PreviousBest); err != nil {

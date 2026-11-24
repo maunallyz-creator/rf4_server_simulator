@@ -62,8 +62,12 @@ func TestFishFightCrossLayerConsistency(t *testing.T) {
 		// 复审 P2-1 主案例：虾按体型归弱鱼口径，f8/f5/f6/f21 同源。
 		{"crawfish", "small", 13.00, 2.50, 0.50, "c.roach"},
 		// f8 salmonid 但词表落 default 的俄语译名鲑科，修后全链路 salmonid。
-		{"sig", "salmonid", 18.00, 3.00, 0.60, "e.chub"},
-		{"chavycha", "salmonid", 18.00, 3.00, 0.60, "e.chub"},
+		{"sig", "salmonid", 20.11, 3.00, 0.60, "e.chub"},
+		{"chavycha", "salmonid", 20.11, 3.00, 0.60, "e.chub"},
+		// v2.2 升实测的鲑科两种：f8 走逐鱼种表，f5/f6 走实测表；组表已移除其
+		// 映射，f21 组键由词表（char / smelt）兜底判回 salmonid，不落 default。
+		{"a_char", "salmonid", 20.07, 6.12, 0.50, "e.chub"},
+		{"gc_smelt", "salmonid", 20.15, 5.49, 0.50, "e.chub"},
 		// small_forage 组的泥鳅/鳞走小鱼口径（a_smelt 原被词表 smelt 误归 salmonid）。
 		{"barb_toni", "small", 18.64, 2.50, 0.50, "c.roach"},
 		{"a_smelt", "small", 18.64, 2.50, 0.50, "c.roach"},

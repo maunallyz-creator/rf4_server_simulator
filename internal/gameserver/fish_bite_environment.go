@@ -81,26 +81,23 @@ func (s *Server) prepareFishRollRuntime(ctx context.Context, c *fishRollContext,
 		c.runtime.levelChecked = true
 		levelKey := s.resolveRollLevelKey(ctx, c.loc)
 		c.runtime.chartKnown = sonarChartLevel(levelKey)
-		if strings.HasPrefix(c.loc, "loc12_") {
-			c.runtime.sonarSystemID = c.loc
-		}
-		if c.runtime.chartKnown {
-			// 海图区号以客户端上报的 loc12_N 为权威（2026-11-14 实测：海钓 14/2
-			// 落点是客户端局部坐标，不是世界坐标，按坐标反查永不命中——玩家真实
-			// 在 198 区时落点报 (-100,680)，而客户端 loc 恒为 loc12_198）。
-			// 坐标反查只作缺省回退。
-			if n, ok := sonarZoneFromLoc(c.loc); ok {
-				c.runtime.zone, c.runtime.zoneKnown = n, true
-			} else if c.hasPos {
-				c.runtime.zone, c.runtime.zoneKnown = sonarZoneForPoint(levelKey, c.x, c.z)
+		if c.runtime.chartKnown && c.hasPos && !c.playerPosOnly {
+			c.runtime.guideKnown = true
+			c.runtime.guideSpot = seaGuideSpotForPoint(c.x, c.z)
+			c.runtime.zone, c.runtime.zoneKnown = sonarZoneForPoint(levelKey, c.x, c.z)
+			if c.runtime.zoneKnown {
+				c.runtime.sonarSystemID = fmt.Sprintf("loc12_%02d", c.runtime.zone)
 			}
 		}
+	}
+	if c.audit != nil {
+		*c.audit = fishRollAudit{statLoc: statLoc, runtime: c.runtime}
 	}
 	if c.runtime.spotPref == nil {
 		c.runtime.spotPref, c.runtime.spotData = s.loadFishSpotPreference(ctx, statLoc, c)
 	}
 	if !c.runtime.lureKnown && c.rigType != 0 {
-		// 多拟饵取最深（与 lureDiveForGear 种子同源，评审 P3-1），
+		// 多拟饵取最深（与 lureCoreForGear 种子同源，评审 P3-1），
 		// 避免"种子用最深、fallback 用第一枚"的两套口径。
 		for _, id := range c.baits {
 			if lure, ok := s.loadLureAttributes(ctx, id); ok {
@@ -147,35 +144,29 @@ func fnvHash(s string) uint64 {
 	return h
 }
 
-// loadFishSpotPreference 读取攻略钓点观测。挪威海的点位按海图区号记录，
-// 与客户端水域 systemID 的数字段同源，可以直接对上；内陆湖的点位是攻略地图
-// 上的网格文本（"67:57"），换不成客户端落点坐标，这里一律不启用，避免把
-// 别处的鱼种当成当前钓点的观测。
+// loadFishSpotPreference 按已定位的挪威海攻略钓点读取渔获观测。
+// 缺少图上标深的定位证据或只有内陆网格文本（如 "67:57"）时保持中性。
 func (s *Server) loadFishSpotPreference(ctx context.Context, statLoc string, c *fishRollContext) (map[string]float64, bool) {
 	out := map[string]float64{}
-	if s == nil || s.DB == nil || statLoc == "" || c == nil || c.runtime == nil || !c.runtime.zoneKnown {
+	if s == nil || s.DB == nil || statLoc == "" || c == nil || c.runtime == nil ||
+		!c.runtime.guideKnown || !isSeaGuideSpot(c.runtime.guideSpot) {
 		return out, false
 	}
 	rows, err := s.DB.SQL.QueryContext(ctx,
-		`SELECT spot,fish_key,catches FROM spot_fish WHERE loc=?`, statLoc)
+		`SELECT fish_key,catches FROM spot_fish WHERE loc=? AND spot=?`, statLoc, strconv.Itoa(c.runtime.guideSpot))
 	if err != nil {
 		return out, false
 	}
 	defer rows.Close()
-	target := strconv.Itoa(c.runtime.zone)
-	matched := false
 	for rows.Next() {
-		var spot, fish string
+		var fish string
 		var catches int64
-		if rows.Scan(&spot, &fish, &catches) != nil || catches <= 0 {
+		if rows.Scan(&fish, &catches) != nil || catches <= 0 {
 			continue
 		}
-		if spot == target {
-			matched = true
-			out[fish] += math.Sqrt(float64(catches))
-		}
+		out[fish] += math.Sqrt(float64(catches))
 	}
-	return out, matched
+	return out, len(out) > 0
 }
 
 // applyFishSpotBias 只在静态库对该地点存在钓点观测时启用。匹配到当前钓点的
@@ -277,21 +268,28 @@ func (s *Server) loadLureAttributes(ctx context.Context, id string) (lureAttribu
 	return lure, true
 }
 
-// lureDiveForGear 取竿上当前装配拟饵的最大名义泳层（DiveDepth）。
-// 多拟饵/多钩钓组取最深：钓组运行水层由最深拟饵决定（评审 P2-3）；
-// 单拟饵不变；无拟饵装配或无证据返回 0。抛竿时种子进 FishState.LureDive，
-// 供 14/7 运动推导钳制与判鱼 fallback 使用，高频路径不再回查 DB。
-func (s *Server) lureDiveForGear(ctx context.Context, gearGUID string) float64 {
+// lureCoreForGear 取竿上当前装配拟饵的名义泳层（DiveDepth）与类型名。
+// 多拟饵/多钩钓组取最深：钓组运行水层由最深拟饵决定（评审 P2-3），类型名取
+// 同一枚最深拟饵——pace 复合分的动作权重按主导拟饵计；单拟饵不变；无拟饵
+// 装配或无证据返回 0/""。抛竿时种子进 FishState.LureDive/LureType，供 14/7
+// 运动推导钳制、判鱼 fallback 与 pace 复合档位使用，高频路径不再回查 DB。
+func (s *Server) lureCoreForGear(ctx context.Context, gearGUID string) (float64, string) {
 	if s == nil || s.DB == nil || gearGUID == "" {
-		return 0
+		return 0, ""
 	}
 	deepest := 0.0
+	typeName := ""
 	for _, bait := range s.currentBaits(ctx, gearGUID) {
-		if lure, ok := s.loadLureAttributes(ctx, bait); ok && lure.DiveDepth > deepest {
+		lure, ok := s.loadLureAttributes(ctx, bait)
+		if !ok {
+			continue
+		}
+		if lure.DiveDepth > deepest || typeName == "" {
 			deepest = lure.DiveDepth
+			typeName = lure.Type
 		}
 	}
-	return deepest
+	return deepest, typeName
 }
 
 func lureIntAttr(attrs map[string]any, key string) int64 {
