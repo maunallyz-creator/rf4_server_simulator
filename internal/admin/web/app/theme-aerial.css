@@ -3541,6 +3541,34 @@ dialog .seg>button.on{
 :root[data-theme=dark] .work>aside .seg>button{
   background:rgba(233,240,232,.06)!important;color:#cfdad2!important;
   border-color:rgba(233,240,232,.18)!important}
+
+/* 地图工具栏：图标按钮不该套用全站「主按钮」的黑底
+   全站规则 `button:not(.ghost):not(.primary):not(.ok)...` 特异性 0,4,1 且带 !important，
+   会把 .zmap-tools 里的图标按钮一起刷成墨黑实底 + 纸色字；而图标是 stroke:currentColor，
+   于是深底配深描边几乎看不见。工具栏是浮在地图上的控件条，按卡片处理：
+   纸底 + 发丝边 + 墨色图标，选中的工具用淡金底 + 金边。选择器加 #view 前缀提高特异性。 */
+.zmap-tools{background:var(--raise)!important;border:1px solid var(--line)!important;border-radius:10px!important;
+  box-shadow:0 1px 0 rgba(255,255,255,.85) inset,0 10px 26px -20px rgba(15,26,22,.55)!important;padding:5px!important}
+.zmap-tools button,
+#view .zmap-tools button,
+.zmap-canvas .zmap-tools button,
+button.zmap-tools button{
+  width:34px!important;height:34px!important;padding:0!important;border-radius:7px!important;
+  background:transparent!important;border:1px solid transparent!important;
+  color:var(--ink)!important;box-shadow:none!important;display:grid!important;place-items:center!important}
+.zmap-tools button svg{stroke:currentColor!important;color:inherit!important}
+.zmap-tools button:hover{background:var(--sunk)!important;border-color:var(--line)!important;color:var(--ink)!important}
+#view .zmap-tools button.on,
+.zmap-tools button.on{background:rgba(168,118,42,.16)!important;border-color:rgba(168,118,42,.55)!important;
+  color:#7d5514!important;box-shadow:none!important}
+:root[data-theme=dark] .zmap-tools{background:#1b2420!important;border-color:rgba(233,240,232,.16)!important}
+:root[data-theme=dark] #view .zmap-tools button,
+:root[data-theme=dark] .zmap-tools button{background:transparent!important;color:#e8efe9!important;border-color:transparent!important}
+:root[data-theme=dark] .zmap-tools button:hover{background:rgba(233,240,232,.08)!important;border-color:rgba(233,240,232,.20)!important}
+:root[data-theme=dark] #view .zmap-tools button.on,
+:root[data-theme=dark] .zmap-tools button.on{background:rgba(216,180,90,.22)!important;border-color:rgba(216,180,90,.60)!important;
+  color:#f3e6c2!important}
+
 :root[data-theme=dark] #work .seg>button.on,
 :root[data-theme=dark] .work>aside .seg>button.on{
   background:var(--accent)!important;color:#12100a!important;border-color:var(--accent)!important}
@@ -4043,3 +4071,26 @@ details.advanced>summary{font-size:13px;color:var(--ink);padding:12px 0 2px}
 #app a.home-link:hover{filter:brightness(1.06);transform:translateY(-1px)}
 #app a.home-link:active{transform:translateY(0)}
 @media (max-width:880px){#app a.home-link{font-size:14.6px!important;padding:11px 18px!important}}
+
+/* 顶栏里的主题下拉：沿用左栏样式会变成压住版本号的大黑块
+   左栏 `.tselect` 是整条宽、菜单向上弹；搬到顶栏后要和其它按钮一样是胶囊，
+   宽度按内容自适应，菜单向下弹。 */
+.top .tselect{width:auto!important;flex:0 0 auto}
+.top .tselect>button{width:auto!important;gap:6px;padding:5px 12px;border-radius:999px;
+  background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.46);color:#fffdf2;font-size:12.4px}
+.top .tselect>button:hover{background:rgba(255,255,255,.24)}
+.top .tselect>button::after{font-size:9px;opacity:.8}
+.top .tselect ul{left:auto;right:0;top:calc(100% + 6px);bottom:auto;min-width:158px;width:max-content;
+  background:#fffef8;border:1px solid var(--line);border-radius:10px;box-shadow:0 16px 34px -18px rgba(6,14,11,.6);
+  padding:5px}
+.top .tselect li{color:#0f1a16;border-radius:6px;padding:8px 10px}
+.top .tselect li:hover{background:rgba(168,118,42,.14)}
+.top .tselect li[aria-selected=true]{background:rgba(168,118,42,.18);color:#6f4a12;font-weight:600}
+:root[data-theme=dark] .top .tselect ul{background:#1b2420;border-color:rgba(233,240,232,.20)}
+:root[data-theme=dark] .top .tselect li{color:#e6ede7}
+:root[data-theme=dark] .top .tselect li:hover{background:rgba(216,180,90,.16)}
+:root[data-theme=dark] .top .tselect li[aria-selected=true]{background:rgba(216,180,90,.20);color:#f0dfae}
+@media(max-width:880px){
+  .top .tselect>button{font-size:11.6px;padding:4px 9px}
+  .top .tselect ul{right:0;min-width:136px}
+}
