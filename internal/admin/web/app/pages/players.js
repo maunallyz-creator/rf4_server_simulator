@@ -155,10 +155,10 @@ function profile(p, reload, setDirty) {
   const hh = p.happy_hour || {};
   const hhText = hh.enabled === false ? '欢乐时光已在「玩法规则」里关闭。' : !hh.qualified ? '开通会员后可以享受欢乐时光加成。'
     : hh.unlimited ? '永久会员，欢乐时光一直有效。' : `欢乐时光有效，剩余约 ${Math.ceil((hh.remaining_seconds || 0) / 60)} 分钟。`;
-  const memberRow = h('label', { class: 'row' }, h('span', { class: 'lab' },
+  const memberRow = h('div', { class: 'row' }, h('span', { class: 'lab' },
     h('b', { text: '会员' }), h('small', { text: '限时需填到期' })),
     h('span', { class: 'ctrl' }, seg));
-  const expRow = h('label', { class: 'row', hidden: String(p.membership) !== '1' }, h('span', { class: 'lab' }, h('b', { text: '会员到期' })),
+  const expRow = h('div', { class: 'row', hidden: String(p.membership) !== '1' }, h('span', { class: 'lab' }, h('b', { text: '会员到期' })),
     h('span', { class: 'ctrl' }, expInput));
   const hhNote = h('p', { class: 'hint', style: { margin: '10px 0 0' }, text: hhText });
   const resetExp = () => { expRow.hidden = memberField.input.value !== '1'; };
