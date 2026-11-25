@@ -78,8 +78,6 @@ function rail() {
     brand(),
     nav,
     h('div', { class: 'rail-foot' },
-      h('label', { text: '界面主题' }),
-      themeMenu(),
       h('div', { class: 'who' },
         h('span', { text: name }),
         h('span', { text: getToken() ? '管理员' : '未登录' }),
@@ -98,6 +96,7 @@ function topBar() {
     h('div', { class: 'tools' },
       // 在控制中心的 iframe 里才出现「回控制中心」，单独打开 /admin/ 时不打扰
       inFrame() ? h('a', { class: 'ghost back-home', href: '/', target: '_top', text: '← 控制中心' }) : null,
+      themeMenu(),
       h('span', { id: 'stamp', text: '本地 · ' + portNow() + ' · ' + BUILD }),
       getToken() ? null : h('button', { class: 'ghost', id: 'loginBtn', type: 'button', onclick: () => loginDialog(), text: '登录' }),
       h('button', { class: 'ghost', id: 'reload', type: 'button', onclick: () => location.reload(), text: '刷新本页' })));
